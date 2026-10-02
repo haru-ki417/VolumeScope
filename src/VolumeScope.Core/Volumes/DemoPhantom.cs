@@ -22,19 +22,32 @@ public static class DemoPhantom
         int w = (int)Math.Round(220 / spacing), h = (int)Math.Round(180 / spacing), d = (int)Math.Round(200 / spacing);
         var origin = new Vec3(-110 + spacing / 2, -90 + spacing / 2, -100 + spacing / 2);
         var geometry = new VolumeGeometry(origin, Vec3.UnitX, Vec3.UnitY, Vec3.UnitZ, spacing, spacing, spacing);
-        var data = new short[(long)w * h * d];
+        var field = new float[(long)w * h * d];
+        Parallel.For(0, d, z =>
+        {
+            for (int y = 0; y < h; y++)
+                for (int x = 0; x < w; x++)
+                    field[(long)z * w * h + y * w + x] = (float)Value(geometry.IndexToPatient(new Vec3(x, y, z)));
+        });
 
+        // 実際の CT のように境目を少しぼかす（部分容積効果）。これがないと、面に階段状の模様が出る
+        for (int pass = 0; pass < 2; pass++)
+        {
+            Blur(field, w, h, d, 1);
+            Blur(field, w, h, d, w);
+            Blur(field, w, h, d, w * h);
+        }
+
+        var data = new short[field.Length];
         Parallel.For(0, d, z =>
         {
             var random = new Random(seed * 7919 + z);
-            for (int y = 0; y < h; y++)
-                for (int x = 0; x < w; x++)
-                {
-                    var p = geometry.IndexToPatient(new Vec3(x, y, z));
-                    double hu = Value(p);
-                    if (hu > -950) hu += (random.NextDouble() - 0.5) * 24; // 雑音（空気の外側には加えない）
-                    data[(long)z * w * h + y * w + x] = (short)Math.Round(hu);
-                }
+            for (long i = (long)z * w * h; i < (long)(z + 1) * w * h; i++)
+            {
+                double hu = field[i];
+                if (hu > -950) hu += (random.NextDouble() - 0.5) * 24; // 雑音（空気の外側には加えない）
+                data[i] = (short)Math.Round(hu);
+            }
         });
 
         return new Volume(w, h, d, data, geometry, new VolumeInfo
@@ -53,17 +66,27 @@ public static class DemoPhantom
     /// <summary>患者座標 p の CT 値</summary>
     internal static double Value(Vec3 p)
     {
-        // 体の外は空気
-        double body = Ellipsoid(p, Vec3.Zero, 95, 75, 95);
-        if (body > 1) return -1000;
-        double hu = 40;
+        // 体は上下に長い樽の形（胴体）。境目は約 1.5 mm でなめらかに変わる（実際の CT と同じように）
+        double gxB = 2 * p.X / (95 * 95), gyB = 2 * p.Y / (75 * 75), gzB = 6 * Math.Pow(Math.Abs(p.Z), 5) / Math.Pow(96, 6);
+        double fBody = Sq(p.X / 95) + Sq(p.Y / 75) + Math.Pow(Math.Abs(p.Z) / 96, 6);
+        double gradBody = Math.Sqrt(Sq(gxB) + Sq(gyB) + Sq(gzB)) + 1e-9;
+        double inBody = Inside((fBody - 1) / gradBody);
+        if (inBody <= 0) return -1000;
 
         // 皮下脂肪（体の外側 8 mm ほど）
-        if (body > 0.85) hu = -90;
+        double inMuscle = Inside((fBody - 0.85) / gradBody);
+        double hu = 40 * inMuscle + -90 * (1 - inMuscle);
 
         // 左右の肺
         foreach (double side in new[] { -1.0, 1.0 })
-            if (Ellipsoid(p, new Vec3(side * 45, 0, 15), 32, 42, 65) < 1) hu = -850;
+        {
+            var c = new Vec3(side * 45, 0, 15);
+            double a = 32, b = 42, cc = 65;
+            double f = Ellipsoid(p, c, a, b, cc);
+            double grad = 2 * Math.Sqrt(Sq((p.X - c.X) / (a * a)) + Sq((p.Y - c.Y) / (b * b)) + Sq((p.Z - c.Z) / (cc * cc))) + 1e-9;
+            double inLung = Inside((f - 1) / grad);
+            hu = -850 * inLung + hu * (1 - inLung);
+        }
 
         // 肺の結節（左肺）
         if (Vec3.Distance(p, NoduleCenter) < NoduleDiameterMm / 2) hu = 60;
@@ -96,7 +119,34 @@ public static class DemoPhantom
         foreach (double bx in new[] { 0.0, 22.0 })
             if (p.Z > 70 && p.Z < 95 && Math.Sqrt(Sq(p.X - bx) + Sq(p.Y + 10)) < 4) hu = 250;
 
-        return hu;
+        // 体の外（空気）となめらかにつなぐ
+        return hu * inBody + -1000 * (1 - inBody);
+    }
+
+    /// <summary>境目からの距離 d（mm、内側が負）→ 内側である割合（0〜1）。約 1.5 mm でなめらかに変わる</summary>
+    private static double Inside(double d)
+    {
+        double t = Math.Clamp(0.5 - d / 1.5, 0, 1);
+        return t * t * (3 - 2 * t);
+    }
+
+    /// <summary>[1 2 1] / 4 の平滑化を、stride ごとに並んだ向きに 1 回かける</summary>
+    private static void Blur(float[] f, int w, int h, int d, long stride)
+    {
+        var src = (float[])f.Clone();
+        int size = stride == 1 ? w : stride == w ? h : d;
+        Parallel.For(0, d, z =>
+        {
+            for (int y = 0; y < h; y++)
+                for (int x = 0; x < w; x++)
+                {
+                    long i = (long)z * w * h + (long)y * w + x;
+                    int pos = stride == 1 ? x : stride == w ? y : z;
+                    float a = pos > 0 ? src[i - stride] : src[i];
+                    float b = pos < size - 1 ? src[i + stride] : src[i];
+                    f[i] = (a + 2 * src[i] + b) / 4;
+                }
+        });
     }
 
     private static double Ellipsoid(Vec3 p, Vec3 c, double a, double b, double cc) =>
