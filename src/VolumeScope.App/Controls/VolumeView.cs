@@ -49,7 +49,11 @@ public sealed class VolumeView : Border
     private bool panning;
     private Volume3DState? lastState;
 
-    private sealed record Volume3DState(object? Volume, Camera Camera, TransferFunction Transfer, ThreeDMode Mode, CropBox Crop, int W, int H, bool Preview);
+    private int volumeVersion;
+    private SurfaceResult? shownSurface;
+    private MeshGeometry3D? shownGeometry;
+
+    private sealed record Volume3DState(int VolumeVersion, Camera Camera, TransferFunction Transfer, ThreeDMode Mode, CropBox Crop, Core.Mpr.WindowLevel MipWindow, int W, int H, bool Preview);
 
     public VolumeView()
     {
@@ -59,10 +63,11 @@ public sealed class VolumeView : Border
         {
             ModelUpDirection = new Vector3D(0, 0, 1),
             ShowViewCube = true,
-            ViewCubeFrontText = "A",
-            ViewCubeBackText = "P",
-            ViewCubeLeftText = "R",
-            ViewCubeRightText = "L",
+            // z が上のとき、HelixToolkit の Front = +x（患者の左）, Left = +y（背中側）
+            ViewCubeFrontText = "L",
+            ViewCubeBackText = "R",
+            ViewCubeLeftText = "P",
+            ViewCubeRightText = "A",
             ViewCubeTopText = "S",
             ViewCubeBottomText = "I",
             IsHeadLightEnabled = true,
@@ -110,8 +115,14 @@ public sealed class VolumeView : Border
         switch (e.PropertyName)
         {
             case nameof(WorkspaceViewModel.Volume):
+                volumeVersion++;
                 model.Content = null;
+                shownSurface = null;
+                shownGeometry = null;
                 Request(preview: false);
+                break;
+            case nameof(WorkspaceViewModel.Window):
+                if (vm!.Mode3D == ThreeDMode.Mip) Request(preview: true, settle: true);
                 break;
             case nameof(WorkspaceViewModel.Camera3D):
                 if (vm!.Mode3D == ThreeDMode.Surface && !interacting) AimHelix();
@@ -173,7 +184,8 @@ public sealed class VolumeView : Border
         var dpi = VisualTreeHelper.GetDpi(this);
         double scale = preview ? 0.4 : Math.Min(dpi.DpiScaleX, 1.5);
         int w = Math.Clamp((int)(ActualWidth * scale), 16, 1400), h = Math.Clamp((int)(ActualHeight * scale), 16, 1400);
-        var state = new Volume3DState(vm.Volume, vm.Camera3D, vm.Transfer, vm.Mode3D, vm.Crop, w, h, preview);
+        var mipWindow = vm.Window.Width > 600 ? vm.Window : new Core.Mpr.WindowLevel(300, 1200);
+        var state = new Volume3DState(volumeVersion, vm.Camera3D, vm.Transfer, vm.Mode3D, vm.Crop, mipWindow, w, h, preview);
         if (state == lastState) return;
         rendering = true;
         var settings = new RenderSettings
@@ -183,7 +195,7 @@ public sealed class VolumeView : Border
             Crop = state.Crop,
             StepFactor = preview ? 1.4 : 0.5,
             Shading = true,
-            MipWindow = vm.Window.Width > 600 ? vm.Window : new Core.Mpr.WindowLevel(300, 1200),
+            MipWindow = mipWindow,
         };
         var sw = Stopwatch.StartNew();
         try
@@ -229,9 +241,17 @@ public sealed class VolumeView : Border
         if (vm?.Surface is not { } result || result.Mesh.TriangleCount == 0)
         {
             model.Content = null;
+            shownSurface = null;
+            shownGeometry = null;
             return;
         }
-        var mesh = ToWpf(result.Mesh);
+        // 面が同じなら作り直さず、色だけ替える
+        if (!ReferenceEquals(result, shownSurface) || shownGeometry is null)
+        {
+            shownGeometry = ToWpf(result.Mesh);
+            shownSurface = result;
+        }
+        var mesh = shownGeometry;
         var c = vm.SurfaceColor;
         var color = Color.FromRgb((byte)(c >> 16), (byte)(c >> 8), (byte)c);
         var front = new MaterialGroup();
@@ -268,7 +288,7 @@ public sealed class VolumeView : Border
         var (forward, _, up) = vm.Camera3D.Basis();
         var center = vm.Volume.Center;
         double radius = vm.Volume.Corners().Max(cn => Vec3.Distance(cn, center));
-        double distance = radius * 2.6 / Math.Max(vm.Camera3D.Zoom, 0.2);
+        double distance = radius * 3.0 / Math.Max(vm.Camera3D.Zoom, 0.2); // 視野角 40° に全体が入る距離（半径 / sin 20°）
         var pos = center - forward * distance;
         helix.Camera = new PerspectiveCamera(
             new Point3D(pos.X, pos.Y, pos.Z),

@@ -30,7 +30,9 @@ public static class SeriesScanner
     public static IReadOnlyList<SeriesInfo> Scan(IEnumerable<string> paths, IProgress<double>? progress = null, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(paths);
-        var files = paths.SelectMany(p => Directory.Exists(p) ? Directory.EnumerateFiles(p, "*", SearchOption.AllDirectories) : [p])
+        // 開けないフォルダー（権限のないものなど）は飛ばして、ほかを探し続ける
+        var options = new EnumerationOptions { RecurseSubdirectories = true, IgnoreInaccessible = true, AttributesToSkip = FileAttributes.System };
+        var files = paths.SelectMany(p => Directory.Exists(p) ? Directory.EnumerateFiles(p, "*", options) : [p])
             .Where(f => !string.Equals(Path.GetFileName(f), "DICOMDIR", StringComparison.OrdinalIgnoreCase))
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .ToList();

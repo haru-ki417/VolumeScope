@@ -71,6 +71,10 @@ public sealed class Volume
     public float Sample(double x, double y, double z)
     {
         if (x < -0.5 || y < -0.5 || z < -0.5 || x > Width - 0.5 || y > Height - 0.5 || z > Depth - 0.5) return Outside;
+        // 端のボクセルの外側半分は、端の値をそのまま使う（空気と混ぜて暗くしない）
+        x = Math.Clamp(x, 0, Width - 1);
+        y = Math.Clamp(y, 0, Height - 1);
+        z = Math.Clamp(z, 0, Depth - 1);
         int x0 = (int)Math.Floor(x), y0 = (int)Math.Floor(y), z0 = (int)Math.Floor(z);
         float fx = (float)(x - x0), fy = (float)(y - y0), fz = (float)(z - z0);
         float c000 = this[x0, y0, z0], c100 = this[x0 + 1, y0, z0], c010 = this[x0, y0 + 1, z0], c110 = this[x0 + 1, y0 + 1, z0];
@@ -117,13 +121,13 @@ public sealed class Volume
     /// <summary>
     /// factor 個ずつまとめて小さくした画像（平均）。大きな検査の面の作成や、操作中の表示を速くするため
     /// </summary>
-    public Volume Downsample(int factor)
+    public Volume Downsample(int factor, CancellationToken cancellationToken = default)
     {
         ArgumentOutOfRangeException.ThrowIfLessThan(factor, 1);
         if (factor == 1) return this;
         int w = (Width + factor - 1) / factor, h = (Height + factor - 1) / factor, d = (Depth + factor - 1) / factor;
         var data = new short[(long)w * h * d];
-        Parallel.For(0, d, z =>
+        Parallel.For(0, d, new ParallelOptions { CancellationToken = cancellationToken }, z =>
         {
             for (int y = 0; y < h; y++)
                 for (int x = 0; x < w; x++)

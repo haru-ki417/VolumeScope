@@ -46,7 +46,7 @@ public static class SurfaceBuilder
         {
             cancellationToken.ThrowIfCancellationRequested();
             progress?.Report(factor == 1 ? "面を作っています…" : $"面を作っています（{factor} ボクセルずつまとめて）…");
-            var source = volume.Downsample(factor);
+            var source = volume.Downsample(factor, cancellationToken);
             mesh = MarchingCubes.Extract(source, options.ThresholdHu, cancellationToken);
             if (options.Quality != SurfaceQuality.Standard || mesh.TriangleCount <= options.TriangleBudget || factor >= 4) break;
             factor++;
@@ -55,14 +55,15 @@ public static class SurfaceBuilder
         if (options.RemoveFragments && mesh.TriangleCount > 0)
         {
             progress?.Report("小さな破片を取り除いています…");
-            mesh = MeshTools.RemoveSmallComponents(mesh);
+            mesh = MeshTools.RemoveSmallComponents(mesh, cancellationToken: cancellationToken);
         }
         if (options.SmoothIterations > 0 && mesh.TriangleCount > 0)
         {
             progress?.Report("なめらかにしています…");
-            mesh = MeshTools.TaubinSmooth(mesh, options.SmoothIterations);
+            mesh = MeshTools.TaubinSmooth(mesh, options.SmoothIterations, cancellationToken: cancellationToken);
         }
 
+        cancellationToken.ThrowIfCancellationRequested();
         return new SurfaceResult(mesh, factor, mesh.SurfaceArea(), Math.Max(mesh.SignedVolume(), 0) / 1000, MeshTools.CountComponents(mesh), sw.Elapsed);
     }
 }

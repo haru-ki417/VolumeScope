@@ -73,6 +73,9 @@ public sealed class VolumeRenderer
 
     public Volume Volume => volume;
 
+    /// <summary>空の領域を飛ばすか（テストで、飛ばしても結果が変わらないことを確かめるため）</summary>
+    internal bool SkipEmptySpace { get; set; } = true;
+
     /// <summary>画像全体が入る球の半径（mm）</summary>
     public double Radius => volume.Corners().Max(c => Vec3.Distance(c, volume.Center));
 
@@ -124,10 +127,10 @@ public sealed class VolumeRenderer
         double alphaScale = stepMm;
         float[] table = tf.Table;
         var sampler = new Sampler(volume);
-        // 勾配（番地の空間）を患者座標の向きに直すための係数
-        var gx = g.ColumnStep / (g.SpacingX * g.SpacingX);
-        var gy = g.RowStep / (g.SpacingY * g.SpacingY);
-        var gz = g.SliceStep / (g.SpacingZ * g.SpacingZ);
+        // 勾配（番地の空間）を患者座標の向きに直すための係数（逆行列の行。斜めの画像でも正しい）
+        var gx = g.IndexAxisGradient(0);
+        var gy = g.IndexAxisGradient(1);
+        var gz = g.IndexAxisGradient(2);
 
         Parallel.For(0, height, new ParallelOptions { CancellationToken = ct }, py =>
         {
@@ -148,7 +151,7 @@ public sealed class VolumeRenderer
                     for (double t = Math.Ceiling(tEnter); t <= tExit; t += 1)
                     {
                         var q = origin + dir * t;
-                        if (BlockMaxAt(q) <= max)
+                        if (SkipEmptySpace && BlockMaxAt(q) <= max)
                         {
                             t = SkipBlock(q, origin, dir, t) - 1;
                             continue;
@@ -176,9 +179,11 @@ public sealed class VolumeRenderer
                 {
                     var q = origin + dir * t;
                     if (t < tEnter) continue;
-                    if (BlockMaxAt(q) < tf.MinVisibleHu)
+                    if (SkipEmptySpace && BlockMaxAt(q) < tf.MinVisibleHu)
                     {
-                        t = SkipBlock(q, origin, dir, t) - 1 + jitter;
+                        // 塊を抜けた最初の読み取り位置（ずらした格子の上）へ
+                        double exit = BlockExit(q, origin, dir);
+                        t = Math.Max(Math.Ceiling(exit - jitter) + jitter, t + 1) - 1;
                         continue;
                     }
                     float val = sampler.Sample(q.X, q.Y, q.Z);
@@ -241,12 +246,13 @@ public sealed class VolumeRenderer
     }
 
     /// <summary>今いる塊を抜ける位置（歩数）</summary>
-    private static double SkipBlock(Vec3 q, Vec3 origin, Vec3 dir, double t)
+    private static double SkipBlock(Vec3 q, Vec3 origin, Vec3 dir, double t) => Math.Max(Math.Floor(BlockExit(q, origin, dir)) + 1, t + 1);
+
+    private static double BlockExit(Vec3 q, Vec3 origin, Vec3 dir)
     {
         int i = (int)(q.X + 0.5) / Block, j = (int)(q.Y + 0.5) / Block, k = (int)(q.Z + 0.5) / Block;
-        double exit = Math.Min(AxisExit(origin.X, dir.X, i * Block - 0.5),
-                      Math.Min(AxisExit(origin.Y, dir.Y, j * Block - 0.5), AxisExit(origin.Z, dir.Z, k * Block - 0.5)));
-        return Math.Max(Math.Floor(exit) + 1, t + 1);
+        return Math.Min(AxisExit(origin.X, dir.X, i * Block - 0.5),
+               Math.Min(AxisExit(origin.Y, dir.Y, j * Block - 0.5), AxisExit(origin.Z, dir.Z, k * Block - 0.5)));
     }
 
     private static double AxisExit(double o, double d, double lo)

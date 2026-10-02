@@ -38,6 +38,7 @@ public enum CropAxis
 public sealed partial class WorkspaceViewModel : ObservableObject
 {
     private CancellationTokenSource? surfaceCts;
+    private double surfaceThreshold = double.NaN;
     private CancellationTokenSource? loadCts;
     private int measurementNumber;
 
@@ -259,8 +260,15 @@ public sealed partial class WorkspaceViewModel : ObservableObject
 
     private async void ScheduleSurface()
     {
-        if (Volume is null || Mode3D != ThreeDMode.Surface && Surface is null) return;
         surfaceCts?.Cancel();
+        if (Volume is null) return;
+        if (Mode3D != ThreeDMode.Surface)
+        {
+            // 面を表示していないときは作らない（古い面は捨て、書き出すときや「面」に切り替えたときに作る）
+            if (Surface is not null && Math.Abs(surfaceThreshold - Threshold) > 1e-9) Surface = null;
+            IsBuildingSurface = false;
+            return;
+        }
         var cts = surfaceCts = new CancellationTokenSource();
         try
         {
@@ -271,6 +279,7 @@ public sealed partial class WorkspaceViewModel : ObservableObject
             var progress = new Progress<string>(s => Status = s);
             var result = await Task.Run(() => SurfaceBuilder.Build(volume, options, progress, cts.Token), cts.Token);
             if (cts.IsCancellationRequested || volume != Volume) return;
+            surfaceThreshold = options.ThresholdHu;
             Surface = result;
             Status = string.Create(CultureInfo.InvariantCulture, $"面を作りました（{result.Elapsed.TotalSeconds:0.0} 秒）");
         }
@@ -482,18 +491,21 @@ public sealed partial class WorkspaceViewModel : ObservableObject
     {
         ArgumentNullException.ThrowIfNull(volume);
         surfaceCts?.Cancel();
-        var (renderer, histogram) = await Task.Run(() => (new VolumeRenderer(volume), volume.Histogram(HistogramMin, HistogramMax, HistogramBin)));
+        bool isCt = string.Equals(volume.Info.Modality, "CT", StringComparison.OrdinalIgnoreCase) || string.IsNullOrEmpty(volume.Info.Modality);
+        var (renderer, histogram, auto) = await Task.Run(() =>
+            (new VolumeRenderer(volume), volume.Histogram(HistogramMin, HistogramMax, HistogramBin), isCt ? default : AutoWindow(volume)));
         Renderer = renderer;
         Surface = null;
+        surfaceThreshold = double.NaN;
         Measurements.Clear();
         measurementNumber = 0;
         OnPropertyChanged(nameof(HasMeasurements));
+        Crosshair = volume.Center; // 先に十字を決めてから画像を替える（断面が新しい位置で作られるように）
         Volume = volume;
         Histogram = histogram;
-        Crosshair = volume.Center;
         Camera3D = new Camera(25, 12, 1.25);
         CropAxis = CropAxis.None;
-        Window = IsCt ? SelectedTissue.SuggestedWindow : AutoWindow(volume);
+        Window = IsCt ? SelectedTissue.SuggestedWindow : auto;
         Status = HasWarnings ? "読み込みました（注意があります。右の「検査」を見てください）。" : "読み込みました。";
         if (Mode3D == ThreeDMode.Surface) ScheduleSurface();
     }
@@ -501,7 +513,10 @@ public sealed partial class WorkspaceViewModel : ObservableObject
     /// <summary>CT 以外（MR など）は、値の分布から濃淡を決める</summary>
     private static WindowLevel AutoWindow(Volume v)
     {
-        var sorted = v.Data.Where((_, i) => i % 97 == 0).Order().ToArray();
+        var sample = new short[(v.Data.Length + 96) / 97];
+        for (int i = 0, k = 0; i < v.Data.Length && k < sample.Length; i += 97, k++) sample[k] = v.Data[i];
+        Array.Sort(sample);
+        var sorted = sample;
         if (sorted.Length == 0) return new WindowLevel(0, 1000);
         double lo = sorted[(int)(sorted.Length * 0.01)], hi = sorted[(int)(sorted.Length * 0.995)];
         return new WindowLevel((lo + hi) / 2, Math.Max(hi - lo, 1));
@@ -546,7 +561,9 @@ public sealed partial class WorkspaceViewModel : ObservableObject
         IsBusy = true;
         try
         {
-            var mesh = Surface?.Mesh;
+            // 表示中の面が今の閾値のもので、作り直し中でなければ、それをそのまま使う
+            bool current = Surface is not null && !IsBuildingSurface && Math.Abs(surfaceThreshold - Threshold) < 1e-9;
+            var mesh = current ? Surface!.Mesh : null;
             if (mesh is null || ExportFullQuality && Surface!.DownsampleFactor != 1)
             {
                 var volume = Volume;

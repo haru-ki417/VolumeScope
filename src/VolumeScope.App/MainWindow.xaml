@@ -52,9 +52,9 @@
         </Border>
 
         <!-- 読み込み中の進み具合（上の細い線） -->
-        <ProgressBar Grid.Row="1" Height="2" VerticalAlignment="Top" Minimum="0" Maximum="1" Value="{Binding Progress}" Panel.ZIndex="5"
+        <ProgressBar Grid.Row="1" Height="2" VerticalAlignment="Top" Minimum="0" Maximum="1" Value="{Binding Progress, Mode=OneWay}" Panel.ZIndex="5"
                      Foreground="{StaticResource AxialBrush}" Background="Transparent" BorderThickness="0"
-                     Visibility="{Binding IsBusy, Converter={StaticResource Visible}}" IsIndeterminate="{Binding IsBusy}" />
+                     Visibility="{Binding IsBusy, Converter={StaticResource Visible}}" />
 
         <Grid Grid.Row="1">
             <Grid.ColumnDefinitions>

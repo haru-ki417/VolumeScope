@@ -109,6 +109,9 @@ public sealed class VolumeGeometry
         inverse[1, 0] * v.X + inverse[1, 1] * v.Y + inverse[1, 2] * v.Z,
         inverse[2, 0] * v.X + inverse[2, 1] * v.Y + inverse[2, 2] * v.Z);
 
+    /// <summary>番地の軸 axis（0: 列, 1: 行, 2: スライス）の値が 1 mm あたりどれだけ変わるかを表す向き（逆行列の行）</summary>
+    public Vec3 IndexAxisGradient(int axis) => new(inverse[axis, 0], inverse[axis, 1], inverse[axis, 2]);
+
     /// <summary>列ベクトル a, b, c を並べた行列の逆行列</summary>
     private static double[,] Invert(Vec3 a, Vec3 b, Vec3 c)
     {

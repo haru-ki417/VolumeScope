@@ -18,16 +18,18 @@ public static class MarchingCubes
         ArgumentNullException.ThrowIfNull(volume);
         int w = volume.Width, h = volume.Height, d = volume.Depth;
         float iso = (float)isoValue;
+        // 画像の外は「閾値よりわずかに小さい」とみなす（境目の頂点が端のボクセルに重ならないように）
+        float outside = iso - 1;
 
         // セル cz は -1〜d-1（外側に 1 つ余分に取り、面を閉じる）
         int cellLayers = d + 1;
-        int chunks = Math.Clamp(Environment.ProcessorCount * 2, 1, Math.Max(1, cellLayers / 4));
+        int chunks = Math.Clamp(Environment.ProcessorCount, 1, Math.Max(1, cellLayers / 4));
         var parts = new Part[chunks];
         Parallel.For(0, chunks, new ParallelOptions { CancellationToken = cancellationToken }, c =>
         {
             int start = -1 + (int)((long)cellLayers * c / chunks);
             int end = -1 + (int)((long)cellLayers * (c + 1) / chunks);
-            parts[c] = Run(volume, iso, start, end, cancellationToken);
+            parts[c] = Run(volume, iso, outside, start, end, cancellationToken);
         });
 
         // 継ぎ目の頂点をつなぎ、1 つの面にまとめる
@@ -86,7 +88,7 @@ public static class MarchingCubes
         { 0, 4, 0, 0, 0, 2 }, { 1, 5, 1, 0, 0, 2 }, { 2, 6, 1, 1, 0, 2 }, { 3, 7, 0, 1, 0, 2 },
     };
 
-    private static Part Run(Volume v, float iso, int zStart, int zEnd, CancellationToken ct)
+    private static Part Run(Volume v, float iso, float outside, int zStart, int zEnd, CancellationToken ct)
     {
         int w = v.Width, h = v.Height;
         int pw = w + 2, ph = h + 2;       // 外側に 1 つずつ余分（番地 -1〜w）
@@ -112,7 +114,7 @@ public static class MarchingCubes
                     int cube = 0;
                     for (int k = 0; k < 8; k++)
                     {
-                        val[k] = Value(v, cx + Corner[k, 0], cy + Corner[k, 1], cz + Corner[k, 2]);
+                        val[k] = Value(v, cx + Corner[k, 0], cy + Corner[k, 1], cz + Corner[k, 2], outside);
                         if (val[k] < iso) cube |= 1 << k;
                     }
                     int mask = EdgeMask[cube];
@@ -149,8 +151,8 @@ public static class MarchingCubes
         return new Part(positions.ToArray(), indices.ToArray(), bottom.Length == 0 ? (int[])low.Clone() : bottom, (int[])low.Clone());
     }
 
-    private static float Value(Volume v, int x, int y, int z) =>
-        (uint)x < (uint)v.Width && (uint)y < (uint)v.Height && (uint)z < (uint)v.Depth ? v.Data[z * v.SliceSize + y * v.Width + x] : float.MinValue;
+    private static float Value(Volume v, int x, int y, int z, float outside) =>
+        (uint)x < (uint)v.Width && (uint)y < (uint)v.Height && (uint)z < (uint)v.Depth ? v.Data[z * v.SliceSize + y * v.Width + x] : outside;
 
     /// <summary>三角形の表（Paul Bourke, "Polygonising a scalar field"）</summary>
     internal static readonly int[,] TriTable =

@@ -132,7 +132,7 @@ public sealed class MprView : Border
                 RequestSlice();
                 break;
             case nameof(WorkspaceViewModel.Crosshair):
-                if (vm?.Volume is not null && Math.Abs(Vec3.Dot(vm.Crosshair, Normal) - renderedPosition) > 1e-6) RequestSlice();
+                if (vm?.Volume is not null && (double.IsNaN(renderedPosition) || Math.Abs(Vec3.Dot(vm.Crosshair, Normal) - renderedPosition) > 1e-6)) RequestSlice();
                 else UpdateOverlay();
                 break;
             case nameof(WorkspaceViewModel.Slab):
@@ -173,10 +173,18 @@ public sealed class MprView : Border
             var mode = vm.Slab;
             double thickness = vm.SlabThickness;
             var result = await Task.Run(() => Mpr.Reslice(volume, plane, through, mode, thickness));
-            if (vm?.Volume != volume) return;
-            slice = result;
-            renderedPosition = Vec3.Dot(through, Normal);
-            Repaint();
+            if (vm?.Volume == volume)
+            {
+                slice = result;
+                renderedPosition = Vec3.Dot(through, Normal);
+                Repaint();
+                // 作っている間に状態が変わっていたら、もう一度
+                if (Math.Abs(Vec3.Dot(vm.Crosshair, Normal) - renderedPosition) > 1e-6 || vm.Slab != mode || vm.SlabThickness != thickness) dirty = true;
+            }
+            else
+            {
+                dirty = true;
+            }
         }
         finally
         {

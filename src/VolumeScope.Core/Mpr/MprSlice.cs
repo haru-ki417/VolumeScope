@@ -116,12 +116,10 @@ public static class Mpr
         ArgumentNullException.ThrowIfNull(volume);
         var n = Normal(plane);
         var proj = volume.Corners().Select(c => Vec3.Dot(c, n)).ToList();
-        var g = volume.Geometry;
-        // 法線方向に 1 ボクセル進むのに必要な距離のうち最小のもの
-        double step = new[] { (g.ColumnStep, g.SpacingX), (g.RowStep, g.SpacingY), (g.SliceStep, g.SpacingZ) }
-            .Where(s => Math.Abs(Vec3.Dot(s.Item1.Normalized(), n)) > 0.3)
-            .Select(s => s.Item2 / Math.Abs(Vec3.Dot(s.Item1.Normalized(), n)))
-            .DefaultIfEmpty(g.MinSpacing).Min();
+        // 法線方向に進んだとき、番地のどれかがちょうど 1 変わる距離（ガントリー傾斜でも正しい）
+        var d = volume.Geometry.PatientDirectionToIndex(n);
+        double maxComponent = Math.Max(Math.Abs(d.X), Math.Max(Math.Abs(d.Y), Math.Abs(d.Z)));
+        double step = maxComponent > 1e-9 ? 1 / maxComponent : volume.Geometry.MinSpacing;
         return (proj.Min(), proj.Max(), step);
     }
 
