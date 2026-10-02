@@ -206,6 +206,21 @@
         <Setter Property="BorderThickness" Value="0" />
         <Setter Property="ItemContainerStyle" Value="{StaticResource RowItem}" />
         <Setter Property="ScrollViewer.HorizontalScrollBarVisibility" Value="Disabled" />
+        <!-- 標準の見た目は、使えないときに白い背景になるため置き換える -->
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="ListBox">
+                    <ScrollViewer Focusable="False" Padding="{TemplateBinding Padding}">
+                        <ItemsPresenter />
+                    </ScrollViewer>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsEnabled" Value="False">
+                            <Setter Property="Opacity" Value="0.45" />
+                        </Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
     </Style>
 
     <!-- スライダー -->

@@ -107,17 +107,17 @@ public static class DemoPhantom
             double ring = Ellipsoid(new Vec3(p.X, p.Y, 0), new Vec3(0, 5, 0), 85, 66, 1e9);
             double dr = (Math.Sqrt(ring) - 1) * 72; // 楕円の線からのおおよその距離（mm）
             // 背骨とのあいだには関節のすき間を残す（背骨の両脇 22 mm より外側だけ）
-            if (Math.Sqrt(Sq(dr) + Sq(p.Z - zc)) < 4.5 && p.Y > -45 && Math.Abs(p.X) > 22) hu = 850;
+            if (Math.Sqrt(Sq(dr) + Sq(p.Z - zc)) < 4.5 && p.Y > -45 && Math.Abs(p.X) > 22) hu = 1300;
         }
 
-        // 造影された大動脈（背骨の前、上で弓状に曲がる）
+        // 造影された大動脈（背骨の前、上で弓状に曲がる。造影 CT の動脈相で約 330 HU）
         var aorta = new Vec3(12, 22, 0);
-        if (p.Z < 55 && Math.Sqrt(Sq(p.X - aorta.X) + Sq(p.Y - aorta.Y)) < 11) hu = 250;
+        if (p.Z < 55 && Math.Sqrt(Sq(p.X - aorta.X) + Sq(p.Y - aorta.Y)) < 11) hu = 330;
         double arch = Math.Sqrt(Sq(Math.Sqrt(Sq(p.Y - 2) + Sq(p.Z - 55)) - 20) + Sq(p.X - 12));
-        if (p.Z >= 55 && arch < 11) hu = 250;
+        if (p.Z >= 55 && arch < 11) hu = 330;
         // 枝（頸部へ向かう細い血管 2 本）
         foreach (double bx in new[] { 0.0, 22.0 })
-            if (p.Z > 70 && p.Z < 95 && Math.Sqrt(Sq(p.X - bx) + Sq(p.Y + 10)) < 4) hu = 250;
+            if (p.Z > 70 && p.Z < 95 && Math.Sqrt(Sq(p.X - bx) + Sq(p.Y + 10)) < 4) hu = 330;
 
         // 体の外（空気）となめらかにつなぐ
         return hu * inBody + -1000 * (1 - inBody);

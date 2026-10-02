@@ -67,6 +67,15 @@
             <Border Background="{StaticResource PanelBrush}" BorderBrush="{StaticResource LineBrush}" BorderThickness="0,0,1,0">
                 <ScrollViewer VerticalScrollBarVisibility="Auto" IsEnabled="{Binding HasVolume}">
                     <StackPanel>
+                        <StackPanel.Style>
+                            <Style TargetType="StackPanel">
+                                <Style.Triggers>
+                                    <Trigger Property="IsEnabled" Value="False">
+                                        <Setter Property="Opacity" Value="0.45" />
+                                    </Trigger>
+                                </Style.Triggers>
+                            </Style>
+                        </StackPanel.Style>
                         <Border Style="{StaticResource Section}">
                             <StackPanel>
                                 <TextBlock Text="組織" Style="{StaticResource SectionTitle}" />
@@ -241,6 +250,15 @@
             <Border Grid.Column="2" Background="{StaticResource PanelBrush}" BorderBrush="{StaticResource LineBrush}" BorderThickness="1,0,0,0">
                 <ScrollViewer VerticalScrollBarVisibility="Auto">
                     <StackPanel IsEnabled="{Binding HasVolume}">
+                        <StackPanel.Style>
+                            <Style TargetType="StackPanel">
+                                <Style.Triggers>
+                                    <Trigger Property="IsEnabled" Value="False">
+                                        <Setter Property="Opacity" Value="0.45" />
+                                    </Trigger>
+                                </Style.Triggers>
+                            </Style>
+                        </StackPanel.Style>
                         <Border Style="{StaticResource Section}">
                             <StackPanel>
                                 <TextBlock Text="道具" Style="{StaticResource SectionTitle}" />

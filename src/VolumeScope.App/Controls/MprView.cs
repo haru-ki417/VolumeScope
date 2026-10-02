@@ -275,7 +275,7 @@ public sealed class MprView : Border
         double mmPerDip = slice.PixelSize / Scale;
         double barMm = 100 / mmPerDip > 160 ? 50 : 10;
         double barLen = barMm / mmPerDip;
-        double bx = ActualWidth - 16 - barLen, by = ActualHeight - 34;
+        double bx = ActualWidth - 16 - barLen, by = ActualHeight - 14;
         var bar = PlaneColors.Brush(Color.FromArgb(200, 0xC9, 0xD2, 0xDE));
         AddLine(bx, by, bx + barLen, by, bar, 1.5);
         AddLine(bx, by - 4, bx, by + 4, bar, 1.5);
@@ -374,8 +374,9 @@ public sealed class MprView : Border
         string slab = vm.Slab == SlabMode.Thin ? "" : string.Create(CultureInfo.InvariantCulture, $"\n{(vm.Slab == SlabMode.Mip ? "MIP" : "平均")} {vm.SlabThickness:0} mm");
         topRight.Text = string.Create(CultureInfo.InvariantCulture, $"W {vm.Window.Width:0}  L {vm.Window.Level:0}{slab}");
         bottomLeft.Text = cursorText;
-        bottomRight.Text = string.Create(CultureInfo.InvariantCulture, $"{zoom * 100:0}%");
-        bottomRight.Margin = new Thickness(10, 0, 10, 48);
+        // 拡大しているときだけ倍率を出す（目盛りの上）
+        bottomRight.Text = Math.Abs(zoom - 1) < 1e-3 ? "" : string.Create(CultureInfo.InvariantCulture, $"{zoom * 100:0}%");
+        bottomRight.Margin = new Thickness(10, 0, 10, 40);
     }
 
     // ---- 操作

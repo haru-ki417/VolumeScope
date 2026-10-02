@@ -128,7 +128,7 @@ public sealed class LoaderTests : IDisposable
         var v = DemoPhantom.Create(spacing: 2);
         Assert.InRange(v.SampleAt(new Vec3(-105, -85, -95)), -1001, -999); // 体の外（空気）
         Assert.InRange(v.SampleAt(new Vec3(-45, 0, 15)), -900, -800);    // 右肺
-        Assert.InRange(v.SampleAt(new Vec3(12, 22, 0)), 200, 300);       // 大動脈
+        Assert.InRange(v.SampleAt(new Vec3(12, 22, 0)), 280, 380);       // 大動脈
         Assert.InRange(v.SampleAt(DemoPhantom.NoduleCenter), -150, 100);  // 結節（境目がぼけるので中心でも少し低い）
         Assert.Contains("人工", v.Info.Warnings[0], StringComparison.Ordinal);
     }
