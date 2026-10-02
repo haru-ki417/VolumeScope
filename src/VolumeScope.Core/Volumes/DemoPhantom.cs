@@ -83,7 +83,8 @@ public static class DemoPhantom
             double zc = 55 - i * 22 + 0.25 * (p.Y - 45); // 背中から前へ下がる
             double ring = Ellipsoid(new Vec3(p.X, p.Y, 0), new Vec3(0, 5, 0), 85, 66, 1e9);
             double dr = (Math.Sqrt(ring) - 1) * 72; // 楕円の線からのおおよその距離（mm）
-            if (Math.Sqrt(Sq(dr) + Sq(p.Z - zc)) < 4.5 && p.Y > -45) hu = 850;
+            // 背骨とのあいだには関節のすき間を残す（背骨の両脇 22 mm より外側だけ）
+            if (Math.Sqrt(Sq(dr) + Sq(p.Z - zc)) < 4.5 && p.Y > -45 && Math.Abs(p.X) > 22) hu = 850;
         }
 
         // 造影された大動脈（背骨の前、上で弓状に曲がる）
