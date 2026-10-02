@@ -1,0 +1,30 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <UseWPF>true</UseWPF>
+    <RootNamespace>VolumeScope.App</RootNamespace>
+    <AssemblyName>VolumeScope</AssemblyName>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+    <ApplicationIcon>Assets\VolumeScope.ico</ApplicationIcon>
+    <!-- CA1822: 画面とのひも付けに使うプロパティはインスタンスのままにする / NU1701: HelixToolkit が使う一部のパッケージの表記 -->
+    <NoWarn>$(NoWarn);CA1001;CA1515;CA1822;NU1701</NoWarn>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="CommunityToolkit.Mvvm" Version="8.4.2" />
+    <PackageReference Include="HelixToolkit.Wpf" Version="3.1.2" />
+    <!-- 圧縮された DICOM（JPEG・JPEG 2000 など）を展開する -->
+    <PackageReference Include="fo-dicom.Codecs" Version="5.16.7" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\VolumeScope.Core\VolumeScope.Core.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Resource Include="Assets\VolumeScope.ico" />
+  </ItemGroup>
+
+</Project>

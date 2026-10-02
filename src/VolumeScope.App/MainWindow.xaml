@@ -1,0 +1,370 @@
+<Window x:Class="VolumeScope.App.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:c="clr-namespace:VolumeScope.App.Controls"
+        xmlns:vm="clr-namespace:VolumeScope.App.ViewModels"
+        xmlns:core="clr-namespace:VolumeScope.Core.Dicom;assembly=VolumeScope.Core"
+        xmlns:surf="clr-namespace:VolumeScope.Core.Surface;assembly=VolumeScope.Core"
+        xmlns:mpr="clr-namespace:VolumeScope.Core.Mpr;assembly=VolumeScope.Core"
+        Title="VolumeScope — CT 3D ワークステーション" Width="1500" Height="920" MinWidth="1280" MinHeight="760"
+        WindowStartupLocation="CenterScreen" Background="{StaticResource BaseBrush}" Foreground="{StaticResource TextBrush}"
+        FontFamily="{StaticResource UiFont}" UseLayoutRounding="True" TextOptions.TextFormattingMode="Ideal" AllowDrop="True">
+    <Window.Resources>
+        <c:EnumEquals x:Key="Is" />
+        <c:Visible x:Key="Visible" />
+        <c:ArgbToBrush x:Key="Argb" />
+    </Window.Resources>
+
+    <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="56" />
+            <RowDefinition Height="*" />
+            <RowDefinition Height="30" />
+        </Grid.RowDefinitions>
+
+        <!-- 上: 名前・検査・開く -->
+        <Border Background="{StaticResource PanelBrush}" BorderBrush="{StaticResource LineBrush}" BorderThickness="0,0,0,1">
+            <DockPanel Margin="16,0">
+                <StackPanel DockPanel.Dock="Left" Orientation="Horizontal" VerticalAlignment="Center">
+                    <Grid Width="28" Height="28">
+                        <Rectangle Height="3" Fill="{StaticResource AxialBrush}" VerticalAlignment="Center" RadiusX="1.5" RadiusY="1.5" />
+                        <Rectangle Width="3" Fill="{StaticResource CoronalBrush}" HorizontalAlignment="Center" RadiusX="1.5" RadiusY="1.5" />
+                        <Ellipse Width="13" Height="13" Stroke="{StaticResource SagittalBrush}" StrokeThickness="3" />
+                    </Grid>
+                    <TextBlock Text="VolumeScope" FontFamily="{StaticResource NumberFont}" FontSize="18" FontWeight="SemiBold" Margin="11,0,0,0" VerticalAlignment="Center" />
+                </StackPanel>
+                <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" VerticalAlignment="Center">
+                    <Button Command="{Binding OpenDemoCommand}" Margin="0,0,8,0" ToolTip="人工的に作った胸部の模型で、操作を試せます">見本の模型</Button>
+                    <Button Command="{Binding OpenFilesCommand}" Margin="0,0,8,0">ファイルを選ぶ</Button>
+                    <Button Style="{StaticResource PrimaryButton}" Command="{Binding OpenFolderCommand}" Margin="0,0,16,0">フォルダーを開く</Button>
+                    <Button x:Name="SaveScreenButton" Click="OnSaveScreen" IsEnabled="{Binding HasVolume}" ToolTip="4 つの画面を PNG で保存します">
+                        <StackPanel Orientation="Horizontal">
+                            <TextBlock Text="&#xE722;" FontFamily="{StaticResource IconFont}" VerticalAlignment="Center" Margin="0,0,7,0" />
+                            <TextBlock Text="画面を保存" />
+                        </StackPanel>
+                    </Button>
+                </StackPanel>
+                <StackPanel VerticalAlignment="Center" Margin="40,0,20,0" Visibility="{Binding HasVolume, Converter={StaticResource Visible}}">
+                    <TextBlock Text="{Binding PatientLine}" FontSize="14" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" />
+                    <TextBlock Text="{Binding SeriesLine}" Style="{StaticResource Muted}" TextWrapping="NoWrap" TextTrimming="CharacterEllipsis" Margin="0,2,0,0" />
+                </StackPanel>
+            </DockPanel>
+        </Border>
+
+        <!-- 読み込み中の進み具合（上の細い線） -->
+        <ProgressBar Grid.Row="1" Height="2" VerticalAlignment="Top" Minimum="0" Maximum="1" Value="{Binding Progress}" Panel.ZIndex="5"
+                     Foreground="{StaticResource AxialBrush}" Background="Transparent" BorderThickness="0"
+                     Visibility="{Binding IsBusy, Converter={StaticResource Visible}}" IsIndeterminate="{Binding IsBusy}" />
+
+        <Grid Grid.Row="1">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="276" />
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="300" />
+            </Grid.ColumnDefinitions>
+
+            <!-- 左: 組織・閾値・3D・断面 -->
+            <Border Background="{StaticResource PanelBrush}" BorderBrush="{StaticResource LineBrush}" BorderThickness="0,0,1,0">
+                <ScrollViewer VerticalScrollBarVisibility="Auto" IsEnabled="{Binding HasVolume}">
+                    <StackPanel>
+                        <Border Style="{StaticResource Section}">
+                            <StackPanel>
+                                <TextBlock Text="組織" Style="{StaticResource SectionTitle}" />
+                                <ListBox Style="{StaticResource PlainList}" ItemsSource="{Binding Tissues}" SelectedItem="{Binding SelectedTissue}">
+                                    <ListBox.ItemTemplate>
+                                        <DataTemplate DataType="{x:Type surf:TissuePreset}">
+                                            <DockPanel>
+                                                <TextBlock DockPanel.Dock="Right" Style="{StaticResource Number}" Foreground="{StaticResource MutedBrush}" FontSize="12"
+                                                           Text="{Binding ThresholdHu, StringFormat={}{0:0} HU}" VerticalAlignment="Center" />
+                                                <Ellipse Width="10" Height="10" Fill="{Binding Color, Converter={StaticResource Argb}}" Margin="0,0,10,0" VerticalAlignment="Center" />
+                                                <TextBlock Text="{Binding Name}" FontSize="13" VerticalAlignment="Center" />
+                                            </DockPanel>
+                                        </DataTemplate>
+                                    </ListBox.ItemTemplate>
+                                </ListBox>
+                                <TextBlock Text="{Binding SelectedTissue.Hint}" Style="{StaticResource Muted}" Margin="2,8,0,0" />
+                            </StackPanel>
+                        </Border>
+
+                        <Border Style="{StaticResource Section}">
+                            <StackPanel>
+                                <DockPanel>
+                                    <TextBlock DockPanel.Dock="Right" Text="{Binding ThresholdText}" Style="{StaticResource Number}" Foreground="{StaticResource AxialBrush}" FontSize="15" />
+                                    <TextBlock Text="閾値" Style="{StaticResource SectionTitle}" />
+                                </DockPanel>
+                                <c:HistogramView Histogram="{Binding Histogram}" Threshold="{Binding Threshold}" Accent="{StaticResource AxialBrush}" Margin="0,2,0,6"
+                                                 ToolTip="CT 値の分布（高さは対数）。線をドラッグするか、左右キーで閾値を変えます" />
+                                <Slider Minimum="-1000" Maximum="2000" Value="{Binding Threshold}" SmallChange="5" LargeChange="50" IsSnapToTickEnabled="True" TickFrequency="5" />
+                                <TextBlock Style="{StaticResource Muted}" Margin="0,6,0,0"
+                                           Text="この値より大きい部分を立体にします。ボリューム表示の見え方も同じだけずれます。" />
+                                <TextBlock Style="{StaticResource Muted}" Foreground="{StaticResource WarnBrush}" Margin="0,6,0,0"
+                                           Text="CT 以外の画像です。組織の値（HU）は目安になりません。分布を見て合わせてください。"
+                                           Visibility="{Binding IsCt, Converter={StaticResource Visible}, ConverterParameter=Invert}" />
+                            </StackPanel>
+                        </Border>
+
+                        <Border Style="{StaticResource Section}">
+                            <StackPanel>
+                                <TextBlock Text="3D の表示" Style="{StaticResource SectionTitle}" />
+                                <Border Style="{StaticResource SegmentHost}">
+                                    <UniformGrid Columns="3">
+                                        <RadioButton Style="{StaticResource Segment}" GroupName="m3" Content="ボリューム" IsChecked="{Binding IsVolumeMode}" />
+                                        <RadioButton Style="{StaticResource Segment}" GroupName="m3" Content="面" IsChecked="{Binding IsSurfaceMode}" />
+                                        <RadioButton Style="{StaticResource Segment}" GroupName="m3" Content="MIP" IsChecked="{Binding IsMipMode}" />
+                                    </UniformGrid>
+                                </Border>
+                                <TextBlock Text="向き" Style="{StaticResource Label}" Margin="0,12,0,5" />
+                                <UniformGrid Columns="5">
+                                    <Button Style="{StaticResource GhostButton}" Command="{Binding SetViewCommand}" CommandParameter="anterior" Content="前" ToolTip="正面（前）から" />
+                                    <Button Style="{StaticResource GhostButton}" Command="{Binding SetViewCommand}" CommandParameter="posterior" Content="後" ToolTip="背中側から" />
+                                    <Button Style="{StaticResource GhostButton}" Command="{Binding SetViewCommand}" CommandParameter="right" Content="右" ToolTip="患者の右から" />
+                                    <Button Style="{StaticResource GhostButton}" Command="{Binding SetViewCommand}" CommandParameter="left" Content="左" ToolTip="患者の左から" />
+                                    <Button Style="{StaticResource GhostButton}" Command="{Binding SetViewCommand}" CommandParameter="superior" Content="頭" ToolTip="頭側から" />
+                                </UniformGrid>
+                                <TextBlock Text="切り取り" Style="{StaticResource Label}" Margin="0,12,0,5" />
+                                <Border Style="{StaticResource SegmentHost}">
+                                    <UniformGrid Columns="4">
+                                        <RadioButton Style="{StaticResource Segment}" GroupName="crop" Content="なし" IsChecked="{Binding CropAxis, Converter={StaticResource Is}, ConverterParameter=None}" />
+                                        <RadioButton Style="{StaticResource Segment}" GroupName="crop" Content="前後" IsChecked="{Binding CropAxis, Converter={StaticResource Is}, ConverterParameter=AnteriorPosterior}" />
+                                        <RadioButton Style="{StaticResource Segment}" GroupName="crop" Content="左右" IsChecked="{Binding CropAxis, Converter={StaticResource Is}, ConverterParameter=LeftRight}" />
+                                        <RadioButton Style="{StaticResource Segment}" GroupName="crop" Content="上下" IsChecked="{Binding CropAxis, Converter={StaticResource Is}, ConverterParameter=SuperiorInferior}" />
+                                    </UniformGrid>
+                                </Border>
+                                <StackPanel Visibility="{Binding HasCrop, Converter={StaticResource Visible}}" Margin="0,8,0,0">
+                                    <Slider Minimum="0" Maximum="0.95" Value="{Binding CropPosition}" SmallChange="0.01" LargeChange="0.05" />
+                                    <CheckBox Content="反対側を残す" IsChecked="{Binding CropFlip}" Margin="0,6,0,0" />
+                                </StackPanel>
+                            </StackPanel>
+                        </Border>
+
+                        <Border Style="{StaticResource Section}" BorderThickness="0">
+                            <StackPanel>
+                                <TextBlock Text="断面の表示" Style="{StaticResource SectionTitle}" />
+                                <ItemsControl ItemsSource="{Binding WindowPresets}">
+                                    <ItemsControl.ItemsPanel>
+                                        <ItemsPanelTemplate>
+                                            <UniformGrid Columns="3" />
+                                        </ItemsPanelTemplate>
+                                    </ItemsControl.ItemsPanel>
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate DataType="{x:Type mpr:WindowPreset}">
+                                            <Button Content="{Binding Name}" Margin="0,0,4,4" Padding="4,6" FontSize="11.5"
+                                                    Command="{Binding DataContext.ApplyWindowCommand, RelativeSource={RelativeSource AncestorType=Window}}" CommandParameter="{Binding}" />
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
+                                <TextBlock Text="厚み" Style="{StaticResource Label}" Margin="0,10,0,5" />
+                                <Border Style="{StaticResource SegmentHost}">
+                                    <UniformGrid Columns="3">
+                                        <RadioButton Style="{StaticResource Segment}" GroupName="slab" Content="薄い" IsChecked="{Binding Slab, Converter={StaticResource Is}, ConverterParameter=Thin}" />
+                                        <RadioButton Style="{StaticResource Segment}" GroupName="slab" Content="MIP" IsChecked="{Binding Slab, Converter={StaticResource Is}, ConverterParameter=Mip}" />
+                                        <RadioButton Style="{StaticResource Segment}" GroupName="slab" Content="平均" IsChecked="{Binding Slab, Converter={StaticResource Is}, ConverterParameter=Average}" />
+                                    </UniformGrid>
+                                </Border>
+                                <DockPanel Margin="0,8,0,0" Visibility="{Binding IsSlab, Converter={StaticResource Visible}}">
+                                    <TextBlock DockPanel.Dock="Right" Style="{StaticResource Number}" Text="{Binding SlabThickness, StringFormat={}{0:0} mm}" Width="44" TextAlignment="Right" />
+                                    <Slider Minimum="2" Maximum="60" Value="{Binding SlabThickness}" IsSnapToTickEnabled="True" TickFrequency="1" />
+                                </DockPanel>
+                                <TextBlock Style="{StaticResource Muted}" Margin="0,6,0,0" Text="MIP は厚みの中の最大値（造影血管や結節が見やすい）、平均は雑音が減ります。" />
+                            </StackPanel>
+                        </Border>
+                    </StackPanel>
+                </ScrollViewer>
+            </Border>
+
+            <!-- 中央: 4 つの画面 -->
+            <Grid Grid.Column="1" Background="{StaticResource LineBrush}">
+                <Grid x:Name="Viewports">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="*" />
+                        <RowDefinition Height="*" />
+                    </Grid.RowDefinitions>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="*" />
+                    </Grid.ColumnDefinitions>
+                    <c:MprView x:Name="AxialView" Plane="Axial" Margin="0,0,1,1" />
+                    <c:MprView x:Name="CoronalView" Grid.Column="1" Plane="Coronal" Margin="1,0,0,1" />
+                    <c:MprView x:Name="SagittalView" Grid.Row="1" Plane="Sagittal" Margin="0,1,1,0" />
+                    <c:VolumeView x:Name="ThreeDView" Grid.Row="1" Grid.Column="1" Margin="1,1,0,0" />
+                </Grid>
+
+                <!-- 何も開いていないとき -->
+                <Border Background="{StaticResource BaseBrush}" Visibility="{Binding HasVolume, Converter={StaticResource Visible}, ConverterParameter=Invert}">
+                    <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center" MaxWidth="460">
+                        <Grid Width="64" Height="64" HorizontalAlignment="Left" Margin="0,0,0,22">
+                            <Rectangle Height="5" Fill="{StaticResource AxialBrush}" VerticalAlignment="Center" RadiusX="2.5" RadiusY="2.5" />
+                            <Rectangle Width="5" Fill="{StaticResource CoronalBrush}" HorizontalAlignment="Center" RadiusX="2.5" RadiusY="2.5" />
+                            <Ellipse Width="30" Height="30" Stroke="{StaticResource SagittalBrush}" StrokeThickness="5" />
+                        </Grid>
+                        <TextBlock Text="CT のシリーズを開いてください" FontSize="22" FontWeight="Bold" />
+                        <TextBlock Style="{StaticResource Body}" Foreground="{StaticResource MutedBrush}" Margin="0,10,0,22" FontSize="13.5" LineHeight="22"
+                                   Text="DICOM の入ったフォルダーを選ぶか、このウィンドウにドロップします。シリーズが複数あれば、どれを 3D にするか選べます。データがなければ、人工の胸部模型で操作を試せます。" />
+                        <StackPanel Orientation="Horizontal">
+                            <Button Style="{StaticResource PrimaryButton}" Command="{Binding OpenFolderCommand}" Padding="18,10" Margin="0,0,10,0">フォルダーを開く</Button>
+                            <Button Command="{Binding OpenDemoCommand}" Padding="18,10">見本の模型で試す</Button>
+                        </StackPanel>
+                    </StackPanel>
+                </Border>
+
+                <!-- シリーズの選択 -->
+                <Border Background="#D912171E" Visibility="{Binding IsPickingSeries, Converter={StaticResource Visible}}">
+                    <Border Background="{StaticResource PanelBrush}" BorderBrush="{StaticResource LineBrush}" BorderThickness="1" CornerRadius="8"
+                            Width="560" MaxHeight="520" VerticalAlignment="Center" Padding="20">
+                        <DockPanel>
+                            <DockPanel DockPanel.Dock="Top" Margin="0,0,0,12">
+                                <Button DockPanel.Dock="Right" Style="{StaticResource GhostButton}" Command="{Binding CancelPickCommand}" Content="閉じる" />
+                                <TextBlock Text="3D にするシリーズを選んでください" FontSize="16" FontWeight="Bold" VerticalAlignment="Center" />
+                            </DockPanel>
+                            <ListBox Style="{StaticResource PlainList}" ItemsSource="{Binding SeriesChoices}" x:Name="SeriesList" MouseDoubleClick="OnSeriesDoubleClick">
+                                <ListBox.ItemTemplate>
+                                    <DataTemplate DataType="{x:Type core:SeriesInfo}">
+                                        <DockPanel>
+                                            <Button DockPanel.Dock="Right" Style="{StaticResource PrimaryButton}" Content="開く" Padding="14,6" VerticalAlignment="Center"
+                                                    Command="{Binding DataContext.PickSeriesCommand, RelativeSource={RelativeSource AncestorType=Window}}" CommandParameter="{Binding}" />
+                                            <StackPanel>
+                                                <TextBlock Text="{Binding Title}" FontSize="13.5" FontWeight="SemiBold" />
+                                                <TextBlock Style="{StaticResource Muted}" Margin="0,3,0,0">
+                                                    <Run Text="{Binding Modality, Mode=OneWay}" /><Run Text="　" /><Run Text="{Binding ImageCount, Mode=OneWay}" /><Run Text=" 枚　" /><Run Text="{Binding Columns, Mode=OneWay}" /><Run Text="×" /><Run Text="{Binding Rows, Mode=OneWay}" /><Run Text="　シリーズ番号 " /><Run Text="{Binding SeriesNumber, Mode=OneWay}" />
+                                                </TextBlock>
+                                            </StackPanel>
+                                        </DockPanel>
+                                    </DataTemplate>
+                                </ListBox.ItemTemplate>
+                            </ListBox>
+                        </DockPanel>
+                    </Border>
+                </Border>
+            </Grid>
+
+            <!-- 右: 道具・計測・面・検査 -->
+            <Border Grid.Column="2" Background="{StaticResource PanelBrush}" BorderBrush="{StaticResource LineBrush}" BorderThickness="1,0,0,0">
+                <ScrollViewer VerticalScrollBarVisibility="Auto">
+                    <StackPanel IsEnabled="{Binding HasVolume}">
+                        <Border Style="{StaticResource Section}">
+                            <StackPanel>
+                                <TextBlock Text="道具" Style="{StaticResource SectionTitle}" />
+                                <Border Style="{StaticResource SegmentHost}">
+                                    <UniformGrid Columns="3">
+                                        <RadioButton Style="{StaticResource Segment}" GroupName="tool" Content="十字" ToolTip="クリックした位置で 3 つの断面が交わります"
+                                                     IsChecked="{Binding Tool, Converter={StaticResource Is}, ConverterParameter=Crosshair}" />
+                                        <RadioButton Style="{StaticResource Segment}" GroupName="tool" Content="距離" ToolTip="ドラッグした 2 点間の距離"
+                                                     IsChecked="{Binding Tool, Converter={StaticResource Is}, ConverterParameter=Distance}" />
+                                        <RadioButton Style="{StaticResource Segment}" GroupName="tool" Content="円" ToolTip="中心からドラッグした円の中の CT 値"
+                                                     IsChecked="{Binding Tool, Converter={StaticResource Is}, ConverterParameter=Circle}" />
+                                    </UniformGrid>
+                                </Border>
+                                <Grid Margin="0,12,0,0">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="Auto" />
+                                        <ColumnDefinition Width="*" />
+                                    </Grid.ColumnDefinitions>
+                                    <Grid.RowDefinitions>
+                                        <RowDefinition /><RowDefinition /><RowDefinition /><RowDefinition /><RowDefinition />
+                                    </Grid.RowDefinitions>
+                                    <TextBlock Style="{StaticResource Muted}" Text="ホイール" Margin="0,0,12,3" />
+                                    <TextBlock Grid.Column="1" Style="{StaticResource Muted}" Text="断面を送る（Ctrl で拡大）" />
+                                    <TextBlock Grid.Row="1" Style="{StaticResource Muted}" Text="右ドラッグ" Margin="0,0,12,3" />
+                                    <TextBlock Grid.Row="1" Grid.Column="1" Style="{StaticResource Muted}" Text="濃淡（左右 = 幅、上下 = レベル）" />
+                                    <TextBlock Grid.Row="2" Style="{StaticResource Muted}" Text="中ドラッグ" Margin="0,0,12,3" />
+                                    <TextBlock Grid.Row="2" Grid.Column="1" Style="{StaticResource Muted}" Text="移動（Shift + 左でも）" />
+                                    <TextBlock Grid.Row="3" Style="{StaticResource Muted}" Text="ダブルクリック" Margin="0,0,12,3" />
+                                    <TextBlock Grid.Row="3" Grid.Column="1" Style="{StaticResource Muted}" Text="その画面を大きく / 戻す" />
+                                    <TextBlock Grid.Row="4" Style="{StaticResource Muted}" Text="3D で左ドラッグ" Margin="0,0,12,0" />
+                                    <TextBlock Grid.Row="4" Grid.Column="1" Style="{StaticResource Muted}" Text="回す" />
+                                </Grid>
+                            </StackPanel>
+                        </Border>
+
+                        <Border Style="{StaticResource Section}">
+                            <StackPanel>
+                                <DockPanel Margin="0,0,0,8">
+                                    <Button DockPanel.Dock="Right" Style="{StaticResource GhostButton}" Command="{Binding ClearMeasurementsCommand}" Content="すべて消す"
+                                            Visibility="{Binding HasMeasurements, Converter={StaticResource Visible}}" Padding="6,2" />
+                                    <TextBlock Text="計測" Style="{StaticResource SectionTitle}" Margin="0" VerticalAlignment="Center" />
+                                </DockPanel>
+                                <TextBlock Style="{StaticResource Muted}" Text="「距離」か「円」を選び、断面の上でドラッグします。計測は置いた断面にだけ表示されます。"
+                                           Visibility="{Binding HasMeasurements, Converter={StaticResource Visible}, ConverterParameter=Invert}" />
+                                <ItemsControl ItemsSource="{Binding Measurements}">
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate DataType="{x:Type vm:MeasurementItem}">
+                                            <Border Background="{StaticResource RaisedBrush}" CornerRadius="5" Padding="10,8" Margin="0,0,0,6">
+                                                <DockPanel>
+                                                    <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" VerticalAlignment="Top">
+                                                        <Button Style="{StaticResource GhostButton}" Padding="5,2" ToolTip="この断面へ移動"
+                                                                Command="{Binding DataContext.GoToMeasurementCommand, RelativeSource={RelativeSource AncestorType=Window}}" CommandParameter="{Binding}">
+                                                            <TextBlock Text="&#xE1D9;" FontFamily="{StaticResource IconFont}" FontSize="11" />
+                                                        </Button>
+                                                        <Button Style="{StaticResource GhostButton}" Padding="5,2" ToolTip="消す"
+                                                                Command="{Binding DataContext.RemoveMeasurementCommand, RelativeSource={RelativeSource AncestorType=Window}}" CommandParameter="{Binding}">
+                                                            <TextBlock Text="&#xE711;" FontFamily="{StaticResource IconFont}" FontSize="11" />
+                                                        </Button>
+                                                    </StackPanel>
+                                                    <StackPanel>
+                                                        <TextBlock>
+                                                            <Run Text="{Binding Number, Mode=OneWay, StringFormat={}#{0}}" Foreground="{StaticResource MutedBrush}" FontFamily="{StaticResource NumberFont}" />
+                                                            <Run Text="{Binding Kind, Mode=OneWay}" Foreground="{StaticResource MutedBrush}" />
+                                                            <Run Text="  " />
+                                                            <Run Text="{Binding Value, Mode=OneWay}" FontFamily="{StaticResource NumberFont}" FontSize="15" FontWeight="SemiBold" />
+                                                        </TextBlock>
+                                                        <TextBlock Text="{Binding Detail}" Style="{StaticResource Muted}" Margin="0,3,0,0" />
+                                                    </StackPanel>
+                                                </DockPanel>
+                                            </Border>
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
+                            </StackPanel>
+                        </Border>
+
+                        <Border Style="{StaticResource Section}">
+                            <StackPanel>
+                                <TextBlock Text="面（3D プリント・CAD）" Style="{StaticResource SectionTitle}" />
+                                <TextBlock Style="{StaticResource Body}" Text="{Binding SurfaceStats}" Visibility="{Binding HasSurface, Converter={StaticResource Visible}}" Margin="0,0,0,10" />
+                                <TextBlock Style="{StaticResource Muted}" Margin="0,0,0,10" Visibility="{Binding HasSurface, Converter={StaticResource Visible}, ConverterParameter=Invert}"
+                                           Text="3D の表示を「面」にすると、閾値の境目の面を作ります。書き出すときは自動で作ります。" />
+                                <UniformGrid Columns="2">
+                                    <Button Command="{Binding ExportSurfaceCommand}" CommandParameter="stl" Margin="0,0,4,0">STL で保存</Button>
+                                    <Button Command="{Binding ExportSurfaceCommand}" CommandParameter="obj" Margin="4,0,0,0">OBJ で保存</Button>
+                                </UniformGrid>
+                                <CheckBox Content="元の細かさで書き出す（時間がかかります）" IsChecked="{Binding ExportFullQuality}" Margin="0,10,0,0" />
+                                <TextBlock Style="{StaticResource Muted}" Margin="0,6,0,0" Text="単位は mm。小さな破片を除き、なめらかにしてから書き出します。" />
+                            </StackPanel>
+                        </Border>
+
+                        <Border Style="{StaticResource Section}" BorderThickness="0">
+                            <StackPanel>
+                                <TextBlock Text="検査" Style="{StaticResource SectionTitle}" />
+                                <TextBlock Style="{StaticResource Body}" Text="{Binding PatientLine}" />
+                                <TextBlock Style="{StaticResource Muted}" Text="{Binding SeriesLine}" Margin="0,3,0,0" />
+                                <TextBlock Style="{StaticResource Muted}" Text="{Binding GeometryLine}" Margin="0,3,0,0" />
+                                <TextBlock Style="{StaticResource Muted}" Margin="0,3,0,0">
+                                    <Run Text="十字の位置の値 " /><Run Text="{Binding CrosshairValue, Mode=OneWay}" FontFamily="{StaticResource NumberFont}" Foreground="{StaticResource TextBrush}" />
+                                </TextBlock>
+                                <ItemsControl ItemsSource="{Binding Warnings}" Margin="0,10,0,0">
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate>
+                                            <DockPanel Margin="0,0,0,6">
+                                                <TextBlock Text="&#xE7BA;" FontFamily="{StaticResource IconFont}" Foreground="{StaticResource WarnBrush}" Margin="0,2,8,0" VerticalAlignment="Top" />
+                                                <TextBlock Text="{Binding}" Style="{StaticResource Muted}" Foreground="{StaticResource TextBrush}" />
+                                            </DockPanel>
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
+                            </StackPanel>
+                        </Border>
+                    </StackPanel>
+                </ScrollViewer>
+            </Border>
+        </Grid>
+
+        <!-- 下: 状態 -->
+        <Border Grid.Row="2" Background="{StaticResource PanelBrush}" BorderBrush="{StaticResource LineBrush}" BorderThickness="0,1,0,0">
+            <DockPanel Margin="16,0">
+                <TextBlock DockPanel.Dock="Right" Style="{StaticResource Muted}" VerticalAlignment="Center"
+                           Text="研究・説明・計画の補助用です。診断用の医療機器ではありません。" />
+                <TextBlock Text="{Binding Status}" Style="{StaticResource Muted}" Foreground="{StaticResource TextBrush}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" TextWrapping="NoWrap" />
+            </DockPanel>
+        </Border>
+    </Grid>
+</Window>
