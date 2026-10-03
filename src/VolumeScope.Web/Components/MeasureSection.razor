@@ -1,0 +1,54 @@
+@* 計測の一覧（距離・円の CT 値） *@
+@inherits StudioComponent
+
+<section class="sec" data-sec="measure">
+    <div class="sec-head">
+        <h3 class="sec-title">計測</h3>
+        @if (S.Measurements.Count > 0)
+        {
+            <button class="link-btn" @onclick="S.ClearMeasurements"><Icon Name="trash" Small="true" />すべて消す</button>
+        }
+    </div>
+    <div class="segments full">
+        <button class="seg @(S.Tool == ToolMode.Crosshair ? "on" : "")" @onclick="() => S.SetTool(ToolMode.Crosshair)"><Icon Name="crosshair" Small="true" />十字</button>
+        <button class="seg @(S.Tool == ToolMode.Distance ? "on" : "")" @onclick="() => S.SetTool(ToolMode.Distance)"><Icon Name="ruler" Small="true" />距離</button>
+        <button class="seg @(S.Tool == ToolMode.Circle ? "on" : "")" @onclick="() => S.SetTool(ToolMode.Circle)"><Icon Name="circle" Small="true" />円</button>
+    </div>
+    @if (S.Measurements.Count == 0)
+    {
+        <p class="small muted">「距離」か「円」を選び、断面の上でドラッグします。円は中心から外へ引きます。計測は置いた断面にだけ表示されます。</p>
+    }
+    else
+    {
+        <ul class="measures">
+            @foreach (var m in S.Measurements)
+            {
+                var item = m;
+                <li class="measure">
+                    <button class="measure-main" title="この断面へ移動" @onclick="() => S.GoToMeasurement(item)">
+                        <span class="m-num" style="color:@Names.Color(item.Plane)">#@item.Number</span>
+                        <span class="m-kind">@item.Kind</span>
+                        <span class="m-value">@item.Value</span>
+                        <span class="m-detail">@item.Detail</span>
+                    </button>
+                    <button class="icon-btn tiny" aria-label="消す" @onclick="() => S.RemoveMeasurement(item)"><Icon Name="x" Small="true" /></button>
+                </li>
+            }
+        </ul>
+    }
+    <dl class="keys hover-only">
+        <div><dt>ホイール</dt><dd>断面を送る（Ctrl で拡大）</dd></div>
+        <div><dt>右ドラッグ</dt><dd>濃淡（左右 = 幅、上下 = レベル）</dd></div>
+        <div><dt>中ドラッグ</dt><dd>移動（Shift + 左でも）</dd></div>
+        <div><dt>ダブルクリック</dt><dd>その画面を大きく / 戻す</dd></div>
+        <div><dt>3D で左 / 右ドラッグ</dt><dd>回す / 移動</dd></div>
+        <div><dt>1〜4・Esc</dt><dd>画面を大きく・戻す</dd></div>
+        <div><dt>C・D・R</dt><dd>十字・距離・円</dd></div>
+    </dl>
+    <dl class="keys touch-only">
+        <div><dt>1 本の指</dt><dd>十字を動かす・計測する（3D は回す）</dd></div>
+        <div><dt>2 本の指</dt><dd>拡大・移動</dd></div>
+        <div><dt>ダブルタップ</dt><dd>その画面を大きく / 戻す</dd></div>
+        <div><dt>画面の下のつまみ</dt><dd>断面を送る</dd></div>
+    </dl>
+</section>

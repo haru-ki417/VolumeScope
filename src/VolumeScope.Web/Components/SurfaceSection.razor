@@ -1,0 +1,24 @@
+@* 面（3D プリント・CAD 用の書き出し） *@
+@inherits StudioComponent
+
+<section class="sec" data-sec="surface">
+    <h3 class="sec-title">面（3D プリント・CAD）</h3>
+    @if (S.HasSurface)
+    {
+        <p class="stat-line">@S.SurfaceStats</p>
+    }
+    else if (S.IsBuildingSurface)
+    {
+        <p class="small muted"><span class="spinner"></span> 面を作っています…</p>
+    }
+    else
+    {
+        <p class="small muted">3D の表示を「面」にすると、閾値（@S.ThresholdText）の境目の面を作ります。書き出すときは自動で作ります。</p>
+    }
+    <div class="row-buttons">
+        <button class="btn" disabled="@(!S.HasVolume || S.IsBusy)" @onclick="() => S.ExportSurfaceAsync(true)"><Icon Name="download" />STL で保存</button>
+        <button class="btn" disabled="@(!S.HasVolume || S.IsBusy)" @onclick="() => S.ExportSurfaceAsync(false)"><Icon Name="download" />OBJ で保存</button>
+    </div>
+    <label class="check"><input type="checkbox" checked="@S.ExportFullQuality" @onchange="e => S.SetExportFullQuality(e.Value is true)" /><span>元の細かさで書き出す（時間がかかります）</span></label>
+    <p class="small muted">単位は mm。小さな破片を除き、なめらかにしてから書き出します。</p>
+</section>

@@ -38,6 +38,9 @@ public sealed class TransferFunction
     /// <summary>R, G, B, 1mm あたりの不透明度 を 1 HU ごとに並べた表</summary>
     internal float[] Table { get; }
 
+    /// <summary>表の写し（-1024 HU から 1 HU ごとに R, G, B, 1mm あたりの不透明度）。ブラウザー版の GPU の描画に使う</summary>
+    public float[] CopyTable() => (float[])Table.Clone();
+
     /// <summary>これより小さい値は見えない（空の領域を飛ばすのに使う）</summary>
     public int MinVisibleHu { get; }
 

@@ -1,0 +1,42 @@
+@* 組織（閾値と 3D の見え方）と、CT 値の分布 *@
+@inherits StudioComponent
+
+<section class="sec" data-sec="display">
+    <h3 class="sec-title">組織</h3>
+    <div class="tissues">
+        @foreach (var t in TissuePresets.All)
+        {
+            var tissue = t;
+            <button class="tissue @(S.SelectedTissue == tissue ? "on" : "")" style="--tc:@Hex(tissue.Color)" @onclick="() => S.SetTissue(tissue)" aria-pressed="@(S.SelectedTissue == tissue ? "true" : "false")">
+                <span class="sw"></span><span class="t-name">@tissue.Name</span><span class="t-hu">@Fmt(tissue.ThresholdHu, "0") HU</span>
+            </button>
+        }
+    </div>
+    <p class="hint">@S.SelectedTissue.Hint</p>
+
+    <div class="param-row">
+        <span class="param-label">閾値</span>
+        <span class="num-with-unit">
+            <input type="number" class="num" step="5" min="-1000" max="2000" value="@Fmt(S.Threshold, "0")" @onchange="OnThreshold" aria-label="閾値（HU）" />
+            <span class="unit">HU</span>
+        </span>
+    </div>
+    @if (S.Histogram is not null)
+    {
+        <HistogramChart Histogram="S.Histogram" Threshold="S.Threshold" Window="S.Window" Color="@Hex(S.SelectedTissue.Color)" OnThreshold="v => S.SetThreshold(v)" />
+    }
+    <p class="small muted">この値より大きい部分を立体にします。ボリューム表示の見え方も同じだけずれます。分布の線をドラッグしても変えられます（帯は断面の濃淡の範囲）。</p>
+    @if (!S.IsCt)
+    {
+        <p class="small warn">CT 以外の画像です。組織の値（HU）は目安になりません。分布を見て合わせてください。</p>
+    }
+</section>
+
+@code {
+    internal static string Hex(uint argb) => "#" + (argb & 0xFFFFFF).ToString("X6", CultureInfo.InvariantCulture);
+
+    private void OnThreshold(ChangeEventArgs e)
+    {
+        if (double.TryParse(e.Value?.ToString(), NumberStyles.Float, CultureInfo.InvariantCulture, out double v)) S.SetThreshold(v);
+    }
+}

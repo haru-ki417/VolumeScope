@@ -2,6 +2,16 @@ using FellowOakDicom;
 
 namespace VolumeScope.Core.Dicom;
 
+/// <summary>
+/// DICOM のファイル 1 つ（名前と、中身を読む方法）。PC のファイルでも、ブラウザーで選んだファイル（メモリの中）でも同じように扱う。
+/// </summary>
+public sealed record DicomInput(string Name, Func<Stream> Open)
+{
+    public static DicomInput FromPath(string path) => new(path, () => File.OpenRead(path));
+
+    public static DicomInput FromBytes(string name, byte[] bytes) => new(name, () => new MemoryStream(bytes, writable: false));
+}
+
 /// <summary>フォルダーの中で見つかった 1 つのシリーズ</summary>
 public sealed record SeriesInfo(
     string SeriesInstanceUid,
@@ -14,9 +24,11 @@ public sealed record SeriesInfo(
     int SeriesNumber,
     int Rows,
     int Columns,
-    IReadOnlyList<string> Files)
+    IReadOnlyList<DicomInput> Inputs)
 {
-    public int ImageCount => Files.Count;
+    public IReadOnlyList<string> Files => Inputs.Select(i => i.Name).ToList();
+
+    public int ImageCount => Inputs.Count;
 
     /// <summary>3D にできるか（CT / MR / PT などの断面像で、2 枚以上）</summary>
     public bool CanBuildVolume => ImageCount >= 2 && Rows > 0 && Columns > 0;
@@ -33,11 +45,21 @@ public static class SeriesScanner
         // 開けないフォルダー（権限のないものなど）は飛ばして、ほかを探し続ける
         var options = new EnumerationOptions { RecurseSubdirectories = true, IgnoreInaccessible = true, AttributesToSkip = FileAttributes.System };
         var files = paths.SelectMany(p => Directory.Exists(p) ? Directory.EnumerateFiles(p, "*", options) : [p])
-            .Where(f => !string.Equals(Path.GetFileName(f), "DICOMDIR", StringComparison.OrdinalIgnoreCase))
+            .Where(File.Exists)
             .Distinct(StringComparer.OrdinalIgnoreCase)
+            .Select(DicomInput.FromPath);
+        return Scan(files, progress, cancellationToken);
+    }
+
+    /// <summary>ファイルの一覧（メモリの中のものでもよい）からシリーズを探す</summary>
+    public static IReadOnlyList<SeriesInfo> Scan(IEnumerable<DicomInput> inputs, IProgress<double>? progress = null, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(inputs);
+        var files = inputs
+            .Where(f => !string.Equals(Path.GetFileName(f.Name), "DICOMDIR", StringComparison.OrdinalIgnoreCase))
             .ToList();
 
-        var headers = new List<(string Path, DicomDataset Ds)>();
+        var headers = new List<(DicomInput Path, DicomDataset Ds)>();
         int done = 0;
         foreach (var file in files)
         {
@@ -71,12 +93,12 @@ public static class SeriesScanner
     }
 
     /// <summary>DICOM でなければ null（例外にはしない）</summary>
-    internal static DicomDataset? TryReadHeader(string path)
+    internal static DicomDataset? TryReadHeader(DicomInput input)
     {
         try
         {
-            if (!File.Exists(path)) return null;
-            var file = DicomFile.Open(path, FileReadOption.SkipLargeTags);
+            using var stream = input.Open();
+            var file = DicomFile.Open(stream, FileReadOption.SkipLargeTags);
             return file.Dataset.Contains(DicomTag.SOPInstanceUID) ? file.Dataset : null;
         }
         catch (Exception ex) when (ex is DicomFileException or DicomDataException or IOException or UnauthorizedAccessException or EndOfStreamException or InvalidOperationException or ArgumentException)

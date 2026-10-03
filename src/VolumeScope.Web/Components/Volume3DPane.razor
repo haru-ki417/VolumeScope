@@ -1,0 +1,253 @@
+@* 3D の画面。画像を GPU（WebGL2）へ送り、volume3d.js が描く *@
+@using System.Runtime.InteropServices
+@inherits StudioComponent
+@implements IAsyncDisposable
+@inject IJSRuntime JS
+
+<section class="pane" style="--plane:#C9D2DE" data-view="3D">
+    <header class="pane-head">
+        <span class="pane-name">3D</span>
+        @if (S.HasVolume)
+        {
+            <span class="pane-pos">@ModeText</span>
+            @if (textureNote is not null)
+            {
+                <span class="pane-wl" title="GPU に送るため、画像を縮めています">@textureNote</span>
+            }
+        }
+        <button class="icon-btn tiny pane-max" title="@(S.Maximized == "3D" ? "4 分割に戻す" : "大きく表示")" @onclick='() => S.ToggleMaximize("3D")'>
+            <Icon Name="@(S.Maximized == "3D" ? "restore" : "maximize")" Small="true" />
+        </button>
+    </header>
+    <div class="pane-body view-host" id="vol3d" data-label="3D" data-color="#C9D2DE"></div>
+    @if (!webglOk)
+    {
+        <div class="pane-note">この端末のブラウザーでは 3D（WebGL2）を表示できません。断面はそのまま使えます。</div>
+    }
+    else if (S.IsBuildingSurface && S.Mode3D == ThreeDMode.Surface)
+    {
+        <div class="pane-badge"><span class="spinner"></span>面を作っています…</div>
+    }
+    else if (S.Mode3D == ThreeDMode.Surface && S.HasVolume && !S.HasSurface && S.Surface is not null)
+    {
+        <div class="pane-badge">この閾値では面ができません。閾値を下げてみてください。</div>
+    }
+    @if (S.HasVolume)
+    {
+        <div class="pane-views">
+            @foreach (var (key, label, title) in Views)
+            {
+                <button class="seg" title="@title" @onclick="() => S.SetView(key)">@label</button>
+            }
+        </div>
+    }
+</section>
+
+@code {
+    private static readonly (string Key, string Label, string Title)[] Views =
+    [
+        ("anterior", "前", "正面（前）から"), ("posterior", "後", "背中側から"), ("right", "右", "患者の右から"),
+        ("left", "左", "患者の左から"), ("superior", "頭", "頭側から"), ("reset", "斜め", "最初の向き"),
+    ];
+
+    private const string Id = "vol3d";
+    private IJSObjectReference? mod;
+    private DotNetObjectReference<Volume3DPane>? self;
+    private bool ready, syncing, dirty, webglOk = true;
+    private int max3d = 2048;
+    private bool mobile;
+
+    private int sentVolume = -1, sentSurface = -1, sentCamera = -1;
+    private string? sentTransfer, sentParams;
+    private string? textureNote;
+
+    private string ModeText => S.Mode3D switch
+    {
+        ThreeDMode.Surface => $"面 {S.ThresholdText}",
+        ThreeDMode.Mip => "MIP",
+        _ => $"ボリューム {S.SelectedTissue.Name}",
+    };
+
+    protected override void OnStudioChanged()
+    {
+        base.OnStudioChanged();
+        _ = SyncAsync();
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender) return;
+        self = DotNetObjectReference.Create(this);
+        mod = await JS.InvokeAsync<IJSObjectReference>("import", "./js/volume3d.js");
+        webglOk = await mod.InvokeAsync<bool>("create", Id, self);
+        if (webglOk)
+        {
+            var lim = await mod.InvokeAsync<int[]>("limits", Id);
+            max3d = lim[0] > 0 ? lim[0] : 256;
+            mobile = lim[1] == 1;
+        }
+        else
+        {
+            StateHasChanged();
+        }
+        ready = webglOk;
+        await SyncAsync();
+    }
+
+    private async Task SyncAsync()
+    {
+        if (!ready || mod is null) return;
+        if (syncing)
+        {
+            dirty = true;
+            return;
+        }
+        syncing = true;
+        try
+        {
+            do
+            {
+                dirty = false;
+                await SyncOnceAsync(mod);
+            }
+            while (dirty);
+        }
+        catch (JSDisconnectedException)
+        {
+        }
+        catch (ObjectDisposedException)
+        {
+        }
+        finally
+        {
+            syncing = false;
+        }
+    }
+
+    private async Task SyncOnceAsync(IJSObjectReference js)
+    {
+        var volume = S.Volume;
+        if (sentVolume != S.VolumeVersion)
+        {
+            sentVolume = S.VolumeVersion;
+            if (volume is null)
+            {
+                await js.InvokeVoidAsync("clearVolume", Id);
+            }
+            else
+            {
+                await SendVolumeAsync(js, volume);
+                sentParams = null; // 切り取りの範囲は画像ごとに違う
+            }
+        }
+        if (volume is null) return;
+
+        string transferKey = S.SelectedTissue.Key + ":" + Fmt(S.Threshold, "0");
+        if (transferKey != sentTransfer)
+        {
+            sentTransfer = transferKey;
+            var table = S.Transfer.CopyTable();
+            await js.InvokeVoidAsync("setTransfer", Id, MemoryMarshal.AsBytes(table.AsSpan()).ToArray());
+        }
+
+        if (sentSurface != S.SurfaceVersion)
+        {
+            sentSurface = S.SurfaceVersion;
+            var mesh = S.Surface?.Mesh;
+            if (mesh is null || mesh.TriangleCount == 0)
+            {
+                await js.InvokeVoidAsync("setMesh", Id, Array.Empty<byte>(), Array.Empty<byte>(), Array.Empty<byte>());
+            }
+            else
+            {
+                await js.InvokeVoidAsync("setMesh", Id,
+                    MemoryMarshal.AsBytes(mesh.Positions.AsSpan()).ToArray(),
+                    MemoryMarshal.AsBytes(mesh.Normals.AsSpan()).ToArray(),
+                    MemoryMarshal.AsBytes(mesh.Indices.AsSpan()).ToArray());
+            }
+        }
+
+        var crop = S.Crop;
+        uint c = S.SelectedTissue.Color;
+        var p = new
+        {
+            mode = S.Mode3D switch { ThreeDMode.Mip => 1, ThreeDMode.Surface => 2, _ => 0 },
+            shading = S.Shading,
+            mip = new[] { S.MipWindow.Low, S.MipWindow.High },
+            color = new[] { ((c >> 16) & 0xFF) / 255.0, ((c >> 8) & 0xFF) / 255.0, (c & 0xFF) / 255.0 },
+            crop = new[] { crop.MinX, crop.MaxX, crop.MinY, crop.MaxY, crop.MinZ, crop.MaxZ },
+        };
+        string paramsKey = System.Text.Json.JsonSerializer.Serialize(p);
+        if (paramsKey != sentParams)
+        {
+            sentParams = paramsKey;
+            await js.InvokeVoidAsync("setParams", Id, p);
+        }
+
+        if (sentCamera != S.CameraVersion)
+        {
+            sentCamera = S.CameraVersion;
+            var cam = S.Camera3D;
+            await js.InvokeVoidAsync("setCamera", Id, new { az = cam.AzimuthDeg, el = cam.ElevationDeg, zoom = cam.Zoom, panX = cam.PanX, panY = cam.PanY });
+        }
+    }
+
+    /// <summary>
+    /// GPU に画像を送る。3D テクスチャの大きさに上限があるので、大きな検査は縮める（断面と面は元の細かさのまま）。
+    /// CT 値は半精度の小数（2 バイト）にする。-1024〜3071 HU は 1 HU 単位で表せる。
+    /// </summary>
+    private async Task SendVolumeAsync(IJSObjectReference js, Volume volume)
+    {
+        long budget = mobile ? 12_000_000 : 40_000_000;
+        int factor = 1;
+        while ((long)Math.Ceiling(volume.Width / (double)factor) * (long)Math.Ceiling(volume.Height / (double)factor) * (long)Math.Ceiling(volume.Depth / (double)factor) > budget
+               || Math.Max(volume.Width, Math.Max(volume.Height, volume.Depth)) / (double)factor > max3d)
+            factor++;
+        var v = factor == 1 ? volume : volume.Downsample(factor);
+        textureNote = factor == 1 ? null : $"表示用に 1/{factor}";
+
+        var table = new ushort[65536];
+        for (int i = 0; i < table.Length; i++) table[i] = BitConverter.HalfToUInt16Bits((Half)(float)(short)i);
+        var bytes = new byte[v.Data.Length * 2];
+        var dst = MemoryMarshal.Cast<byte, ushort>(bytes.AsSpan());
+        var src = v.Data;
+        for (int i = 0; i < src.Length; i++) dst[i] = table[(ushort)src[i]];
+
+        var g = v.Geometry;
+        double radius = volume.Corners().Max(cn => Vec3.Distance(cn, volume.Center));
+        var center = volume.Center;
+        var rows = new[] { g.IndexAxisGradient(0), g.IndexAxisGradient(1), g.IndexAxisGradient(2) };
+        var geo = new
+        {
+            center = new[] { center.X, center.Y, center.Z },
+            radius,
+            minSpacing = g.MinSpacing,
+            origin = new[] { g.Origin.X, g.Origin.Y, g.Origin.Z },
+            p2i = rows.SelectMany(r => new[] { r.X, r.Y, r.Z }).ToArray(),
+        };
+        await js.InvokeVoidAsync("setVolume", Id, v.Width, v.Height, v.Depth, bytes, geo);
+        await InvokeAsync(StateHasChanged);
+    }
+
+    [JSInvokable]
+    public void OnCamera(double az, double el, double zoom, double panX, double panY) => S.CameraMovedByUser(new Camera(az, el, zoom, panX, panY));
+
+    [JSInvokable] public void OnDouble(string id) => S.ToggleMaximize("3D");
+
+    public async ValueTask DisposeAsync()
+    {
+        Dispose();
+        if (mod is not null)
+        {
+            try
+            {
+                await mod.InvokeVoidAsync("dispose", Id);
+                await mod.DisposeAsync();
+            }
+            catch (JSDisconnectedException)
+            {
+            }
+        }
+        self?.Dispose();
+    }
+}

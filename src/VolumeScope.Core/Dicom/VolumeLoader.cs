@@ -25,7 +25,7 @@ public static class VolumeLoader
     public const long MaxVoxels = int.MaxValue;
 
     private sealed record Header(
-        string Path, int Rows, int Columns, Vec3? Position, Vec3? RowDir, Vec3? ColDir,
+        DicomInput Path, int Rows, int Columns, Vec3? Position, Vec3? RowDir, Vec3? ColDir,
         double SpacingRow, double SpacingCol, int InstanceNumber, bool IsLocalizer, int Frames, string Photometric);
 
     public static Volume Load(SeriesInfo series, IProgress<double>? progress = null, CancellationToken cancellationToken = default)
@@ -33,7 +33,7 @@ public static class VolumeLoader
         ArgumentNullException.ThrowIfNull(series);
         var warnings = new List<string>();
 
-        var headers = series.Files
+        var headers = series.Inputs
             .Select(f => (Path: f, Ds: SeriesScanner.TryReadHeader(f)))
             .Where(h => h.Ds is not null)
             .Select(h => ReadHeader(h.Path, h.Ds!))
@@ -134,7 +134,7 @@ public static class VolumeLoader
             }
             catch (Exception ex) when (ex is not OperationCanceledException)
             {
-                errors.Enqueue($"{Path.GetFileName(ordered[z].Path)}: {ex.Message}");
+                errors.Enqueue($"{System.IO.Path.GetFileName(ordered[z].Path.Name)}: {ex.Message}");
             }
             progress?.Report((double)Interlocked.Increment(ref done) / depth);
         });
@@ -146,7 +146,7 @@ public static class VolumeLoader
         return new Volume(width, height, depth, data, geometry, info);
     }
 
-    private static Header ReadHeader(string path, DicomDataset ds)
+    private static Header ReadHeader(DicomInput path, DicomDataset ds)
     {
         Vec3? pos = null, row = null, col = null;
         if (ds.TryGetValues<double>(DicomTag.ImagePositionPatient, out var p) && p.Length >= 3) pos = new Vec3(p[0], p[1], p[2]);
@@ -177,9 +177,13 @@ public static class VolumeLoader
             $"{h.RowDir.Value.X:0.00},{h.RowDir.Value.Y:0.00},{h.RowDir.Value.Z:0.00},{h.ColDir.Value.X:0.00},{h.ColDir.Value.Y:0.00},{h.ColDir.Value.Z:0.00}");
 
     /// <summary>1 枚の画像を読み、CT 値（HU）にして書き込む</summary>
-    internal static void DecodeSlice(string path, int width, int height, Span<short> target)
+    internal static void DecodeSlice(DicomInput input, int width, int height, Span<short> target)
     {
-        var file = DicomFile.Open(path);
+        DicomFile file;
+        using (var stream = input.Open())
+        {
+            file = DicomFile.Open(stream, FileReadOption.ReadAll);
+        }
         if (file.Dataset.InternalTransferSyntax.IsEncapsulated)
             file = new DicomTranscoder(file.Dataset.InternalTransferSyntax, DicomTransferSyntax.ExplicitVRLittleEndian).Transcode(file);
         var ds = file.Dataset;

@@ -4,6 +4,8 @@ CT の DICOM シリーズを読み込み、**3 断面（横断・冠状断・矢
 骨・皮膚・造影血管・肺の立体表示、距離と CT 値の計測、3D プリント用の STL 書き出しができます。
 読影や手術計画の **補助** を想定しています。
 
+**▶ ブラウザーで開く: https://haru-ki417.github.io/VolumeScope/** 　スマホ・タブレット・パソコンで、インストールなしで使えます（DICOM はブラウザーの中だけで読み、どこにも送りません）。
+
 > **診断用の医療機器ではありません。** 医療機器としての承認・認証は受けていません。研究・説明・計画の補助として使ってください。
 
 ![4 分割の画面（見本の模型）](docs/screenshots/02-bone-volume.png)
@@ -57,8 +59,28 @@ CT の DICOM シリーズを読み込み、**3 断面（横断・冠状断・矢
 
 試作（`Medical3DEngine`）の辺の表（EdgeTable）は標準の表と食い違っていて、三角形の頂点の一部が前の立方体の古い位置で作られていました。VolumeScope では辺の表を三角形の表から作り、食い違いが起きないようにしています。ほかに、閾値の固定（200 HU）・4 ボクセルおきの間引き・縦方向の 3 倍の表示倍率（スライス間隔と二重にかかる）もなくしました。
 
+## ブラウザー版（スマホ・タブレット・パソコン）
+
+https://haru-ki417.github.io/VolumeScope/ を開くだけで使えます。Windows 版と同じ計算の部品（`VolumeScope.Core`）を WebAssembly にして、画面だけをブラウザー用に作りました。
+
+<table>
+<tr>
+<td width="74%"><img src="docs/screenshots/07-web-desktop.png" alt="ブラウザー版（パソコン）"></td>
+<td><img src="docs/screenshots/08-web-phone.png" alt="ブラウザー版（スマホ）"></td>
+</tr>
+<tr><td align="center">パソコン（4 分割）</td><td align="center">スマホ（1 画面ずつ切りかえ）</td></tr>
+</table>
+
+- **読み込み**: フォルダー・複数のファイル・ZIP を選ぶか、画面にドロップ。DICOM はブラウザーの中だけで読み、どこにも送りません
+- **3D は GPU（WebGL2）**: Windows 版の CPU のレイキャスティングと同じカメラ・同じ伝達関数（1 HU ごとの表）・同じ勾配の陰影の式を、画素ごとのシェーダーで計算。CT 値は半精度の小数の 3D テクスチャにし、-1024〜3071 HU を 1 HU 単位で保つ。大きな検査は GPU の上限に合わせて 3D の表示だけ縮める（断面・面・計測は元の細かさ）
+- **断面・面・計測**: Windows 版と同じ C# の計算（三線形補間の断面、マーチングキューブス法の面、円の CT 値）を、WebAssembly に事前翻訳（AOT）して動かす
+- **タッチ操作**: 1 本の指で十字・計測（3D は回す）、2 本の指で拡大・移動、ダブルタップで大きく表示。断面の下のつまみで断面を送る
+- 一度開けばオフラインでも起動できます（アプリの部品だけを保存し、DICOM は保存しない）
+- 圧縮された DICOM（JPEG・JPEG 2000 など）は、展開の部品がブラウザーで動かないため Windows 版だけで開けます
+
 ## 使ってみる
 
+- ブラウザー版: https://haru-ki417.github.io/VolumeScope/
 - 配布版: [Releases](../../releases) の zip を展開して `VolumeScope.exe` を起動（.NET のインストール不要）
 - データがなければ「見本の模型で試す」
 - 実際の CT で試すなら、[The Cancer Imaging Archive (TCIA)](https://www.cancerimagingarchive.net/) などの公開データが使えます。コレクションごとに利用条件（ライセンス・引用のしかた）が違うので、各ページで確認してください。
@@ -70,6 +92,7 @@ CT の DICOM シリーズを読み込み、**3 断面（横断・冠状断・矢
 dotnet build VolumeScope.slnx
 dotnet test --solution VolumeScope.slnx
 dotnet run --project src/VolumeScope.App
+dotnet run --project src/VolumeScope.Web      # ブラウザー版（開発用のサーバー）。公開版の作成には `dotnet workload install wasm-tools` が必要
 
 # 見本の模型で画面を一通り開き、画像に保存（docs/screenshots の作り方）
 VolumeScope.exe --snapshots docs/screenshots

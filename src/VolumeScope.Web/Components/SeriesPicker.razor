@@ -1,0 +1,17 @@
+@* シリーズが複数あるとき、3D にするシリーズを選ぶ *@
+@inherits StudioComponent
+
+<Modal Title="3D にするシリーズを選んでください" Class="wide" OnClose="() => S.SetPickingSeries(false)">
+    <ul class="series-list">
+        @foreach (var s in S.SeriesChoices)
+        {
+            var series = s;
+            <li>
+                <button class="series" @onclick="() => S.PickSeriesAsync(series)">
+                    <span class="series-title">@series.Title</span>
+                    <span class="series-meta">@series.Modality　@series.ImageCount 枚　@series.Columns×@series.Rows　シリーズ番号 @series.SeriesNumber</span>
+                </button>
+            </li>
+        }
+    </ul>
+</Modal>

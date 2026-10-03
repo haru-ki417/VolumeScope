@@ -2,6 +2,7 @@
   <Folder Name="/src/">
     <Project Path="src/VolumeScope.App/VolumeScope.App.csproj" />
     <Project Path="src/VolumeScope.Core/VolumeScope.Core.csproj" />
+    <Project Path="src/VolumeScope.Web/VolumeScope.Web.csproj" />
   </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/VolumeScope.Tests/VolumeScope.Tests.csproj" />

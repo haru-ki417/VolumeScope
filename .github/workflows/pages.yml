@@ -1,0 +1,50 @@
+# ブラウザー版（Web 版）を作って GitHub Pages で公開する。
+# 読み込み・断面・面の計算を速くするため WebAssembly にあらかじめ翻訳（AOT）し、ダウンロードを小さくするため .gz も置く。
+name: Web
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-dotnet@v5
+        with:
+          global-json-file: global.json
+
+      - name: Install WebAssembly tools
+        run: dotnet workload install wasm-tools
+
+      - name: Test (Core)
+        run: dotnet test --project tests/VolumeScope.Tests --configuration Release
+
+      - name: Publish
+        run: dotnet publish src/VolumeScope.Web -c Release -o out
+
+      - name: Prepare site
+        run: |
+          cp out/wwwroot/index.html out/wwwroot/404.html
+          touch out/wwwroot/.nojekyll
+
+      # 公開用の枝（gh-pages）に、できあがったものだけを置く（GitHub Pages はこの枝から公開する）
+      - name: Deploy to gh-pages
+        run: |
+          cd out/wwwroot
+          git init -q -b gh-pages
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -q -m "Web 版を公開（${GITHUB_SHA::7}）"
+          git push -f "https://x-access-token:${{ github.token }}@github.com/${{ github.repository }}.git" gh-pages

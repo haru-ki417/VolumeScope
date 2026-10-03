@@ -1,0 +1,20 @@
+@* このアプリについて *@
+<Modal Title="VolumeScope について" OnClose="OnClose">
+    <p>CT の DICOM シリーズを読み込み、<strong>3 断面（横断・冠状断・矢状断）と 3D</strong> を並べて表示します。骨・皮膚・造影血管・肺の立体表示、距離と CT 値の計測、3D プリント用の STL 書き出しができます。</p>
+    <ul class="about-list">
+        <li>DICOM はこのブラウザーの中だけで読み、どこにも送りません。</li>
+        <li>3D は GPU（WebGL2）で、Windows 版と同じカメラ・同じ伝達関数・同じ陰影の式で描きます。断面・面・計測は Windows 版と同じ計算部品（C#）を WebAssembly で動かしています。</li>
+        <li>圧縮された DICOM（JPEG・JPEG 2000 など）はブラウザー版では開けません。Windows 版を使ってください。</li>
+        <li>大きな検査は、3D の表示のときだけ GPU に合わせて縮めます（断面・面・計測は元の細かさ）。</li>
+    </ul>
+    <p class="small warn">研究・説明・計画の補助用です。診断用の医療機器ではありません。</p>
+    <div class="modal-foot">
+        <a class="btn" href="https://github.com/haru-ki417/VolumeScope" target="_blank" rel="noopener"><Icon Name="github" />GitHub</a>
+        <a class="btn" href="https://github.com/haru-ki417/VolumeScope#使ってみる" target="_blank" rel="noopener"><Icon Name="windows" />Windows 版</a>
+        <button class="btn primary" @onclick="OnClose">閉じる</button>
+    </div>
+</Modal>
+
+@code {
+    [Parameter] public EventCallback OnClose { get; set; }
+}

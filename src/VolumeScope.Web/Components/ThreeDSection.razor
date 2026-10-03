@@ -1,0 +1,46 @@
+@* 3D の表示のしかたと切り取り *@
+@inherits StudioComponent
+
+<section class="sec" data-sec="display">
+    <h3 class="sec-title">3D の表示</h3>
+    <div class="segments full">
+        <button class="seg @(S.Mode3D == ThreeDMode.Volume ? "on" : "")" @onclick="() => S.SetMode(ThreeDMode.Volume)">ボリューム</button>
+        <button class="seg @(S.Mode3D == ThreeDMode.Surface ? "on" : "")" @onclick="() => S.SetMode(ThreeDMode.Surface)">面</button>
+        <button class="seg @(S.Mode3D == ThreeDMode.Mip ? "on" : "")" @onclick="() => S.SetMode(ThreeDMode.Mip)">MIP</button>
+    </div>
+    <p class="small muted">
+        @switch (S.Mode3D)
+        {
+            case ThreeDMode.Surface: <text>閾値の境目の面（三角形）。そのまま STL / OBJ に書き出せます。</text>; break;
+            case ThreeDMode.Mip: <text>視線の上の最大値。造影血管や結節の分布が一目で分かります（濃淡は断面と同じ）。</text>; break;
+            default: <text>CT 値ごとの色と透明度で、中まで透かして見ます。</text>; break;
+        }
+    </p>
+    @if (S.Mode3D == ThreeDMode.Volume)
+    {
+        <label class="check"><input type="checkbox" checked="@S.Shading" @onchange="e => S.SetShading(e.Value is true)" /><span>陰影をつける</span></label>
+    }
+
+    <h3 class="sec-title">切り取り</h3>
+    <div class="segments full">
+        <button class="seg @(S.CropAxis == CropAxis.None ? "on" : "")" @onclick="() => S.SetCrop(CropAxis.None)">なし</button>
+        <button class="seg @(S.CropAxis == CropAxis.AnteriorPosterior ? "on" : "")" @onclick="() => S.SetCrop(CropAxis.AnteriorPosterior)">前後</button>
+        <button class="seg @(S.CropAxis == CropAxis.LeftRight ? "on" : "")" @onclick="() => S.SetCrop(CropAxis.LeftRight)">左右</button>
+        <button class="seg @(S.CropAxis == CropAxis.SuperiorInferior ? "on" : "")" @onclick="() => S.SetCrop(CropAxis.SuperiorInferior)">上下</button>
+    </div>
+    @if (S.CropAxis != CropAxis.None)
+    {
+        <div class="param-row slim">
+            <span class="param-label">切る量</span><span class="value">@Fmt(S.CropPosition * 100, "0") %</span>
+        </div>
+        <input type="range" class="range" min="0" max="0.95" step="0.01" value="@Fmt(S.CropPosition, "0.##")" @oninput="OnCrop" aria-label="切る量" />
+        <label class="check"><input type="checkbox" checked="@S.CropFlip" @onchange="e => S.SetCropFlip(e.Value is true)" /><span>反対側を残す</span></label>
+    }
+</section>
+
+@code {
+    private void OnCrop(ChangeEventArgs e)
+    {
+        if (double.TryParse(e.Value?.ToString(), NumberStyles.Float, CultureInfo.InvariantCulture, out double v)) S.SetCropPosition(v);
+    }
+}

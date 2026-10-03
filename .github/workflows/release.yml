@@ -20,6 +20,10 @@ jobs:
         with:
           global-json-file: global.json
 
+      # ブラウザー版（VolumeScope.Web）を WebAssembly にするための部品
+      - name: Install WebAssembly tools
+        run: dotnet workload install wasm-tools
+
       - name: Test
         run: dotnet test --solution VolumeScope.slnx --configuration Release
 

@@ -1,0 +1,26 @@
+@* 何も開いていないときの案内 *@
+<div class="empty">
+    <img class="empty-mark" src="icons/icon.svg" alt="" />
+    <h1>CT のシリーズを開いてください</h1>
+    <p class="muted">DICOM の入ったフォルダーかファイル（ZIP でも可）を選ぶか、この画面にドロップします。シリーズが複数あれば、どれを 3D にするか選べます。</p>
+    <div class="empty-actions">
+        @if (FolderSupported)
+        {
+            <label class="btn primary big" for="pick-folder"><Icon Name="folder" />フォルダーを開く</label>
+            <label class="btn big" for="pick-files"><Icon Name="file" />ファイル・ZIP を開く</label>
+        }
+        else
+        {
+            <label class="btn primary big" for="pick-files"><Icon Name="file" />ファイル・ZIP を開く</label>
+        }
+    </div>
+    <div class="empty-sep"></div>
+    <p class="muted small">データがなければ、人工の胸部 CT（背骨・肋骨・造影大動脈・肺・直径 12 mm の結節）で操作を試せます。</p>
+    <button class="btn big" @onclick="OnDemo"><Icon Name="sample" />見本の模型で試す</button>
+    <p class="muted small privacy"><Icon Name="info" Small="true" />DICOM はこのブラウザーの中だけで読み、どこにも送りません。</p>
+</div>
+
+@code {
+    [Parameter] public bool FolderSupported { get; set; } = true;
+    [Parameter] public EventCallback OnDemo { get; set; }
+}

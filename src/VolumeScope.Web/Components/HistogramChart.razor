@@ -1,0 +1,60 @@
+@inherits ChartBase
+@* CT 値の分布（高さは対数）と閾値の線。線をドラッグ・左右キーで閾値を変える *@
+
+@if (Histogram is { Length: > 0 } hist)
+{
+    double maxLog = Math.Max(Math.Log10(hist.Max() + 1), 1e-9);
+    <div class="chart draggable" style="height:@(Height)px" @ref="Box" tabindex="0" role="slider" aria-label="閾値" aria-valuenow="@F(Threshold)"
+         @onpointerdown="Down" @onpointermove="Move" @onpointerup="Up" @onpointercancel="Up" @onkeydown="Key">
+        <svg viewBox="0 0 1000 100" preserveAspectRatio="none" class="chart-svg" aria-hidden="true">
+            @if (Window is { } w)
+            {
+                double wx0 = Math.Clamp(X(w.Low), 0, 1000), wx1 = Math.Clamp(X(w.High), 0, 1000);
+                <rect class="window" x="@F(wx0)" y="0" width="@F(Math.Max(0, wx1 - wx0))" height="100" />
+            }
+            <path class="hist" d="@Path(hist, maxLog)" />
+            <line x1="0" y1="100" x2="1000" y2="100" class="axis" vector-effect="non-scaling-stroke" />
+            <line x1="@F(X(Threshold))" y1="0" x2="@F(X(Threshold))" y2="100" class="marker" style="stroke:@Color" vector-effect="non-scaling-stroke" />
+        </svg>
+        <span class="marker-label" style="left:@F(Math.Clamp(X(Threshold) / 10, 0, 86))%;color:@Color">@Studio.Fmt(Threshold, "0") HU</span>
+    </div>
+    <div class="chart-axis"><span>-1000</span><span>0</span><span>1000</span><span>2000</span></div>
+}
+
+@code {
+    [Parameter] public long[]? Histogram { get; set; }
+    [Parameter] public double Threshold { get; set; }
+    [Parameter] public WindowLevel? Window { get; set; }
+    [Parameter] public string Color { get; set; } = "#E3A548";
+    [Parameter] public int Height { get; set; } = 110;
+    [Parameter] public EventCallback<double> OnThreshold { get; set; }
+
+    private const double Min = Studio.HistogramMin, Max = Studio.HistogramMax;
+
+    protected override bool CanDrag => OnThreshold.HasDelegate && Histogram is { Length: > 0 };
+
+    private static double X(double hu) => (hu - Min) / (Max - Min) * 1000;
+
+    private static string Path(long[] hist, double maxLog)
+    {
+        var sb = new System.Text.StringBuilder("M0 100");
+        double bw = 1000.0 / hist.Length;
+        for (int i = 0; i < hist.Length; i++)
+        {
+            double y = 100 - Math.Log10(hist[i] + 1) / maxLog * 96;
+            sb.Append(System.Globalization.CultureInfo.InvariantCulture, $" L{F(i * bw)} {F(y)} L{F((i + 1) * bw)} {F(y)}");
+        }
+        sb.Append(" L1000 100 Z");
+        return sb.ToString();
+    }
+
+    protected override void OnDragTo(double fraction) => Set(Min + fraction * (Max - Min));
+
+    private void Set(double hu) => OnThreshold.InvokeAsync(Math.Round(Math.Clamp(hu, -1000, 2000) / 5) * 5);
+
+    private void Key(KeyboardEventArgs e)
+    {
+        if (e.Key == "ArrowRight" || e.Key == "ArrowUp") Set(Threshold + (e.ShiftKey ? 50 : 10));
+        else if (e.Key == "ArrowLeft" || e.Key == "ArrowDown") Set(Threshold - (e.ShiftKey ? 50 : 10));
+    }
+}

@@ -1,0 +1,249 @@
+@* 断面（横断・冠状断・矢状断）の 1 画面。断面の画像は C# で作り、描くのは mpr.js *@
+@inherits StudioComponent
+@implements IAsyncDisposable
+@inject IJSRuntime JS
+
+<section class="pane" style="--plane:@Names.Color(Plane)" data-view="@Plane">
+    <header class="pane-head">
+        <span class="pane-name">@Names.Plane(Plane)</span>
+        @if (S.HasVolume)
+        {
+            <span class="pane-pos">@Names.Axis(Plane) @Fmt(Position, "0.0") mm</span>
+            <span class="pane-wl">W @Fmt(S.Window.Width, "0") L @Fmt(S.Window.Level, "0")@SlabText</span>
+        }
+        <button class="icon-btn tiny pane-max" title="@(S.Maximized == Plane.ToString() ? "4 分割に戻す" : "大きく表示")" @onclick="() => S.ToggleMaximize(Plane.ToString())">
+            <Icon Name="@(S.Maximized == Plane.ToString() ? "restore" : "maximize")" Small="true" />
+        </button>
+    </header>
+    <div class="pane-body view-host" id="@Id" data-label="@Names.Plane(Plane)" data-color="@Names.Color(Plane)"></div>
+    @if (S.HasVolume)
+    {
+        <div class="pane-slider">
+            <button class="icon-btn tiny" aria-label="前の断面" @onclick="() => S.ScrollSlice(Plane, -1)"><Icon Name="minus" Small="true" /></button>
+            <input type="range" class="range" aria-label="@Names.Plane(Plane) の位置" min="@Fmt(range.Min, "0.###")" max="@Fmt(range.Max, "0.###")" step="@Fmt(range.Step, "0.####")"
+                   value="@Fmt(Position, "0.###")" @oninput="OnSlider" />
+            <button class="icon-btn tiny" aria-label="次の断面" @onclick="() => S.ScrollSlice(Plane, 1)"><Icon Name="plus" Small="true" /></button>
+        </div>
+    }
+</section>
+
+@code {
+    [Parameter, EditorRequired] public MprPlane Plane { get; set; }
+
+    private string Id => "mpr-" + Plane;
+    private IJSObjectReference? mod;
+    private DotNetObjectReference<MprPane>? self;
+    private bool ready, syncing, dirty;
+
+    // 今出している断面
+    private MprSlice? slice;
+    private int sliceVolume = -1;
+    private double slicePos = double.NaN;
+    private SlabMode sliceSlab;
+    private double sliceThickness;
+    private WindowLevel sentWindow;
+    private string? sentOverlay;
+    private string? sentTool;
+    private byte[]? gray;
+    private (double Min, double Max, double Step) range;
+    private int rangeVolume = -1;
+
+    private Vec3 Normal => Mpr.Normal(Plane);
+    private double Position => Vec3.Dot(S.Crosshair, Normal);
+    private string SlabText => S.Slab == SlabMode.Thin ? "" : $" · {(S.Slab == SlabMode.Mip ? "MIP" : "平均")} {Fmt(S.SlabThickness, "0")} mm";
+
+    protected override void OnParametersSet() => UpdateRange();
+
+    private void UpdateRange()
+    {
+        if (S.Volume is not null && rangeVolume != S.VolumeVersion)
+        {
+            range = Mpr.Range(S.Volume, Plane);
+            rangeVolume = S.VolumeVersion;
+        }
+    }
+
+    protected override void OnStudioChanged()
+    {
+        UpdateRange();
+        base.OnStudioChanged();
+        _ = SyncAsync();
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender) return;
+        self = DotNetObjectReference.Create(this);
+        mod = await JS.InvokeAsync<IJSObjectReference>("import", "./js/mpr.js");
+        await mod.InvokeVoidAsync("create", Id, self);
+        ready = true;
+        await SyncAsync();
+    }
+
+    /// <summary>状態に合わせて断面を作り直す。作っている間に変わったら、終わってからもう一度</summary>
+    private async Task SyncAsync()
+    {
+        if (!ready || mod is null) return;
+        if (syncing)
+        {
+            dirty = true;
+            return;
+        }
+        syncing = true;
+        try
+        {
+            do
+            {
+                dirty = false;
+                await SyncOnceAsync(mod);
+            }
+            while (dirty);
+        }
+        catch (JSDisconnectedException)
+        {
+        }
+        catch (ObjectDisposedException)
+        {
+        }
+        finally
+        {
+            syncing = false;
+        }
+    }
+
+    private async Task SyncOnceAsync(IJSObjectReference js)
+    {
+        var volume = S.Volume;
+        if (volume is null)
+        {
+            if (slice is not null)
+            {
+                slice = null;
+                sentOverlay = null;
+                await js.InvokeVoidAsync("clear", Id);
+            }
+            return;
+        }
+        double pos = Position;
+        bool newSlice = slice is null || sliceVolume != S.VolumeVersion || Math.Abs(pos - slicePos) > 1e-6 || sliceSlab != S.Slab || sliceThickness != S.SlabThickness;
+        if (newSlice)
+        {
+            slice = Mpr.Reslice(volume, Plane, S.Crosshair, S.Slab, S.SlabThickness);
+            sliceVolume = S.VolumeVersion;
+            slicePos = pos;
+            sliceSlab = S.Slab;
+            sliceThickness = S.SlabThickness;
+        }
+        var s = slice!;
+        if (newSlice || sentWindow != S.Window)
+        {
+            sentWindow = S.Window;
+            int n = s.Width * s.Height;
+            if (gray is null || gray.Length != n) gray = new byte[n];
+            var w = S.Window;
+            var values = s.Values;
+            for (int i = 0; i < n; i++) gray[i] = w.ToGray(values[i]);
+            await js.InvokeVoidAsync("setSlice", Id, s.Width, s.Height, gray);
+        }
+        string tool = S.Tool switch { ToolMode.Distance => "distance", ToolMode.Circle => "circle", _ => "crosshair" };
+        if (tool != sentTool)
+        {
+            sentTool = tool;
+            await js.InvokeVoidAsync("setTool", Id, tool);
+        }
+        var overlay = BuildOverlay(s, pos);
+        string key = System.Text.Json.JsonSerializer.Serialize(overlay);
+        if (key != sentOverlay)
+        {
+            sentOverlay = key;
+            await js.InvokeVoidAsync("setOverlay", Id, overlay);
+        }
+    }
+
+    private object BuildOverlay(MprSlice s, double pos)
+    {
+        // 画面の画素の中心は x + 0.5（mpr.js の座標）
+        double[] Px(Vec3 p)
+        {
+            var (x, y) = s.PatientToPixel(p);
+            return [Math.Round(x + 0.5, 2), Math.Round(y + 0.5, 2)];
+        }
+        string ColorAlong(Vec3 axis) =>
+            Names.Color(Enum.GetValues<MprPlane>().Where(p => p != Plane).OrderByDescending(p => Math.Abs(Vec3.Dot(Mpr.Normal(p), axis))).First());
+
+        double tolerance = range.Step / 2 + 1e-6;
+        var measures = new List<object>();
+        foreach (var m in S.Measurements.Where(m => m.Plane == Plane && Math.Abs(m.PlanePosition - pos) <= tolerance))
+        {
+            if (m is DistanceMeasurement d)
+                measures.Add(new { type = "d", a = Px(d.A), b = Px(d.B), text = $"#{m.Number} {m.Value}" });
+            else if (m is CircleMeasurement c)
+                measures.Add(new { type = "c", c = Px(c.Center), r = Math.Round(c.RadiusMm / s.PixelSize, 2), text = $"#{m.Number} {m.Value}\nSD {Fmt(c.Stats.StandardDeviation, "0")}" });
+        }
+        return new
+        {
+            cross = Px(S.Crosshair),
+            vColor = ColorAlong(s.Right),
+            hColor = ColorAlong(s.Down),
+            labels = new
+            {
+                left = Mpr.OrientationLetter(-s.Right),
+                right = Mpr.OrientationLetter(s.Right),
+                top = Mpr.OrientationLetter(-s.Down),
+                bottom = Mpr.OrientationLetter(s.Down),
+            },
+            measures,
+        };
+    }
+
+    private Vec3 ToPatient(double x, double y) => slice!.PixelToPatient(x - 0.5, y - 0.5);
+
+    private void OnSlider(ChangeEventArgs e)
+    {
+        if (double.TryParse(e.Value?.ToString(), NumberStyles.Float, CultureInfo.InvariantCulture, out double v)) S.SetSlicePosition(Plane, v);
+    }
+
+    [JSInvokable] public void OnScroll(string id, int steps) => S.ScrollSlice(Plane, steps);
+
+    [JSInvokable] public void OnWindow(double dx, double dy) => S.DragWindow(dx, dy);
+
+    [JSInvokable]
+    public void OnPoint(string id, double x, double y)
+    {
+        if (slice is null) return;
+        S.MoveCrosshairInPlane(Plane, ToPatient(x, y));
+    }
+
+    [JSInvokable]
+    public void OnDistance(string id, double ax, double ay, double bx, double by)
+    {
+        if (slice is null) return;
+        S.AddDistance(Plane, slicePos, ToPatient(ax, ay), ToPatient(bx, by));
+    }
+
+    [JSInvokable]
+    public void OnCircle(string id, double cx, double cy, double r)
+    {
+        if (slice is null) return;
+        S.AddCircle(slice, slicePos, ToPatient(cx, cy), r * slice.PixelSize);
+    }
+
+    [JSInvokable] public void OnDouble(string id) => S.ToggleMaximize(Plane.ToString());
+
+    public async ValueTask DisposeAsync()
+    {
+        Dispose();
+        if (mod is not null)
+        {
+            try
+            {
+                await mod.InvokeVoidAsync("dispose", Id);
+                await mod.DisposeAsync();
+            }
+            catch (JSDisconnectedException)
+            {
+            }
+        }
+        self?.Dispose();
+    }
+}

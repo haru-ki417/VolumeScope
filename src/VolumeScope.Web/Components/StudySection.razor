@@ -1,0 +1,29 @@
+@* 読み込んだ検査の情報と注意 *@
+@inherits StudioComponent
+
+<section class="sec" data-sec="study">
+    <h3 class="sec-title">検査</h3>
+    @if (S.HasVolume)
+    {
+        <dl class="stat-list">
+            <div><dt>患者</dt><dd>@(string.IsNullOrEmpty(S.PatientLine) ? "—" : S.PatientLine)</dd></div>
+            <div><dt>シリーズ</dt><dd>@(string.IsNullOrEmpty(S.SeriesLine) ? "—" : S.SeriesLine)</dd></div>
+            <div><dt>大きさ</dt><dd>@S.GeometryLine</dd></div>
+            <div><dt>十字の位置の値</dt><dd>@S.CrosshairValue</dd></div>
+        </dl>
+        @foreach (var w in S.Warnings)
+        {
+            <p class="note warn"><Icon Name="warn" Small="true" /><span>@w</span></p>
+        }
+        @if (S.SeriesChoices.Count > 1)
+        {
+            <button class="btn" @onclick="() => S.SetPickingSeries(true)"><Icon Name="list" />別のシリーズを選ぶ（@S.SeriesChoices.Count 個）</button>
+        }
+    }
+    else
+    {
+        <p class="small muted">まだ何も開いていません。</p>
+    }
+    <p class="note"><Icon Name="info" Small="true" /><span>DICOM はこのブラウザーの中だけで読み、どこにも送りません。ページを閉じると消えます。</span></p>
+    <p class="small muted">研究・説明・計画の補助用です。診断用の医療機器ではありません。</p>
+</section>

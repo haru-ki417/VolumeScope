@@ -1,0 +1,188 @@
+@* VolumeScope Web の画面全体
+   広い画面: 上 | 左（組織・3D・断面）| 中（4 分割）| 右（計測・面・検査）| 下（状態）
+   狭い画面: 上 | 画面（1 つずつ切りかえ）| 切りかえの列 | その内容 *@
+@inherits StudioComponent
+@implements IAsyncDisposable
+@inject BrowserIo Io
+
+<div class="shell" id="drop-zone" data-empty="@(S.HasVolume ? "no" : "yes")" data-panel="@panel">
+    <input type="file" id="pick-folder" class="hidden-input" webkitdirectory multiple tabindex="-1" aria-hidden="true" />
+    <input type="file" id="pick-files" class="hidden-input" multiple tabindex="-1" aria-hidden="true" />
+
+    <header class="topbar">
+        <div class="brand">
+            <img class="logo" src="icons/icon.svg" alt="" />
+            <span class="brand-name">VolumeScope</span>
+            <span class="brand-web">WEB</span>
+        </div>
+        @if (S.HasVolume)
+        {
+            <div class="file-info">
+                <div class="file-name">@S.PatientLine</div>
+                <div class="file-desc">@S.SeriesLine</div>
+            </div>
+        }
+        <div class="top-actions">
+            <div class="menu-host">
+                <button class="btn primary" @onclick="() => openMenu = !openMenu" aria-haspopup="menu" aria-expanded="@(openMenu ? "true" : "false")">
+                    <Icon Name="open" /><span class="hide-xs">開く</span><Icon Name="chevron" Small="true" />
+                </button>
+                @if (openMenu)
+                {
+                    <div class="menu-backdrop" @onclick="() => openMenu = false"></div>
+                    <div class="menu right" role="menu" @onclick="() => openMenu = false">
+                        @if (folderSupported)
+                        {
+                            <label class="menu-item" for="pick-folder" role="menuitem">フォルダーを開く<small>下のフォルダーも探します</small></label>
+                        }
+                        <label class="menu-item" for="pick-files" role="menuitem">ファイルを開く<small>複数の DICOM、または ZIP</small></label>
+                        <hr />
+                        <button class="menu-item" role="menuitem" @onclick="S.OpenDemoAsync">見本の模型<small>人工の胸部 CT で操作を試す</small></button>
+                    </div>
+                }
+            </div>
+            <button class="btn hide-sm" disabled="@(!S.HasVolume)" @onclick="SaveScreens" title="表示中の画面を PNG で保存"><Icon Name="camera" />画面を保存</button>
+            <button class="icon-btn show-sm" disabled="@(!S.HasVolume)" @onclick="SaveScreens" aria-label="画面を保存"><Icon Name="camera" /></button>
+            <button class="icon-btn" @onclick="() => showAbout = true" aria-label="このアプリについて"><Icon Name="info" /></button>
+        </div>
+    </header>
+
+    <aside class="left">
+        <div class="side-body">
+            <TissueSection />
+            <ThreeDSection />
+            <SliceSection />
+        </div>
+    </aside>
+
+    <main class="center">
+        <div class="viewer-toolbar">
+            <div class="segments" role="group" aria-label="画面">
+                <button class="seg ico @(S.Maximized is null ? "on" : "")" title="4 分割" @onclick="() => S.SetMaximized(null)"><Icon Name="grid" /></button>
+                <button class="seg @(S.Maximized == "Axial" ? "on" : "")" style="--plane:#E3A548" @onclick='() => S.SetMaximized("Axial")'><span class="pdot"></span>横断</button>
+                <button class="seg @(S.Maximized == "Coronal" ? "on" : "")" style="--plane:#3FB8AF" @onclick='() => S.SetMaximized("Coronal")'><span class="pdot"></span><span>冠状<span class="hide-xs">断</span></span></button>
+                <button class="seg @(S.Maximized == "Sagittal" ? "on" : "")" style="--plane:#E06C8A" @onclick='() => S.SetMaximized("Sagittal")'><span class="pdot"></span><span>矢状<span class="hide-xs">断</span></span></button>
+                <button class="seg @(S.Maximized == "3D" ? "on" : "")" @onclick='() => S.SetMaximized("3D")'>3D</button>
+            </div>
+            <div class="segments" role="group" aria-label="道具">
+                <button class="seg ico @(S.Tool == ToolMode.Crosshair ? "on" : "")" title="十字（C）: 押した位置で 3 つの断面が交わる" @onclick="() => S.SetTool(ToolMode.Crosshair)"><Icon Name="crosshair" /></button>
+                <button class="seg ico @(S.Tool == ToolMode.Distance ? "on" : "")" title="距離（D）: ドラッグした 2 点間" @onclick="() => S.SetTool(ToolMode.Distance)"><Icon Name="ruler" /></button>
+                <button class="seg ico @(S.Tool == ToolMode.Circle ? "on" : "")" title="円（R）: 中心からドラッグした円の中の CT 値" @onclick="() => S.SetTool(ToolMode.Circle)"><Icon Name="circle" /></button>
+            </div>
+        </div>
+        <div class="views-area">
+            <div class="views" data-max="@(S.Maximized ?? "none")">
+                <MprPane Plane="MprPlane.Axial" />
+                <MprPane Plane="MprPlane.Coronal" />
+                <MprPane Plane="MprPlane.Sagittal" />
+                <Volume3DPane />
+            </div>
+            @if (!S.HasVolume && !S.IsBusy)
+            {
+                <EmptyState FolderSupported="folderSupported" OnDemo="S.OpenDemoAsync" />
+            }
+            @if (S.IsBusy)
+            {
+                <div class="busy">
+                    <div class="busy-card">
+                        <div class="busy-text">@S.Status</div>
+                        <div class="progress @(S.Progress < 0 ? "indeterminate" : "")"><span style="width:@(S.Progress < 0 ? "30" : Fmt(S.Progress * 100, "0.#"))%"></span></div>
+                    </div>
+                </div>
+            }
+        </div>
+    </main>
+
+    <aside class="right">
+        <div class="side-body">
+            <MeasureSection />
+            <SurfaceSection />
+            <StudySection />
+        </div>
+    </aside>
+
+    <nav class="mobile-tabs" aria-label="設定の切りかえ">
+        @foreach (var (key, label) in Panels)
+        {
+            <button class="@(panel == key ? "on" : "")" @onclick="() => panel = key">@label</button>
+        }
+    </nav>
+
+    <footer class="statusbar">
+        <span class="status-text">@S.Status</span>
+        @if (S.HasVolume)
+        {
+            <span class="hover-status">十字 @Fmt(S.Crosshair.X, "0.0"), @Fmt(S.Crosshair.Y, "0.0"), @Fmt(S.Crosshair.Z, "0.0") mm　@S.CrosshairValue</span>
+        }
+        <span class="muted hide-sm">診断用ではありません</span>
+    </footer>
+
+    @if (S.IsPickingSeries)
+    {
+        <SeriesPicker />
+    }
+    @if (showAbout)
+    {
+        <AboutDialog OnClose="() => showAbout = false" />
+    }
+</div>
+
+@code {
+    private static readonly (string Key, string Label)[] Panels =
+        [("display", "組織・3D"), ("slice", "断面"), ("measure", "計測"), ("surface", "面"), ("study", "検査")];
+
+    private DotNetObjectReference<App>? self;
+    private bool openMenu, showAbout, folderSupported = true;
+    private string panel = "display";
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender) return;
+        self = DotNetObjectReference.Create(this);
+        await Io.InitFilesAsync(self, "drop-zone");
+        await Io.ListenKeysAsync(self);
+        folderSupported = await Io.FolderPickerSupportedAsync();
+        // スマホ・タブレットの縦では 1 画面ずつ（最初は 3D）
+        if (await Io.IsNarrowAsync()) S.SetMaximized("3D");
+        StateHasChanged();
+    }
+
+    [JSInvokable]
+    public async Task OnFilesPicked(int count, double totalBytes)
+    {
+        openMenu = false;
+        await S.LoadPickedAsync(count, (long)totalBytes);
+    }
+
+    [JSInvokable]
+    public async Task OnKey(string key)
+    {
+        switch (key)
+        {
+            case "open": await Io.ClickAsync("pick-files"); break;
+            case "crosshair": S.SetTool(ToolMode.Crosshair); break;
+            case "distance": S.SetTool(ToolMode.Distance); break;
+            case "circle": S.SetTool(ToolMode.Circle); break;
+            case "Axial" or "Coronal" or "Sagittal" or "3D": S.ToggleMaximize(key); break;
+            case "restore": if (S.IsPickingSeries) S.SetPickingSeries(false); else if (showAbout) { showAbout = false; StateHasChanged(); } else S.SetMaximized(null); break;
+            case "prev" or "next":
+                var plane = S.Maximized switch { "Coronal" => MprPlane.Coronal, "Sagittal" => MprPlane.Sagittal, _ => MprPlane.Axial };
+                S.ScrollSlice(plane, key == "next" ? 1 : -1);
+                break;
+        }
+    }
+
+    private async Task SaveScreens()
+    {
+        string name = S.Maximized is null ? "volumescope.png" : $"volumescope_{S.Maximized.ToLowerInvariant()}.png";
+        if (await Io.SaveScreensAsync(".views .view-host", name)) S.Status = name + " を保存しました。";
+        S.Notify();
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        Dispose();
+        self?.Dispose();
+        await Io.DisposeAsync();
+    }
+}

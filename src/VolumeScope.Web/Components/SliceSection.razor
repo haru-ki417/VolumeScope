@@ -1,0 +1,51 @@
+@* 断面の濃淡と厚み *@
+@inherits StudioComponent
+
+<section class="sec" data-sec="slice">
+    <h3 class="sec-title">断面の濃淡</h3>
+    <div class="segments wrap full">
+        @foreach (var p in WindowPresets.All)
+        {
+            var preset = p;
+            <button class="seg @(S.Window == preset.Window ? "on" : "")" @onclick="() => S.SetWindow(preset.Window)">@preset.Name</button>
+        }
+    </div>
+    <div class="param-row slim"><span class="param-label">レベル（中心）</span><span class="value">@Fmt(S.Window.Level, "0") HU</span></div>
+    <input type="range" class="range" min="-1000" max="2000" step="5" value="@Fmt(S.Window.Level, "0")" @oninput="OnLevel" aria-label="レベル" />
+    <div class="param-row slim"><span class="param-label">幅</span><span class="value">@Fmt(S.Window.Width, "0") HU</span></div>
+    <input type="range" class="range" min="10" max="4000" step="10" value="@Fmt(S.Window.Width, "0")" @oninput="OnWidth" aria-label="幅" />
+    <p class="small muted hover-only">断面の上で右ボタンを押したままドラッグしても変えられます（左右 = 幅、上下 = レベル）。</p>
+
+    <h3 class="sec-title">厚み</h3>
+    <div class="segments full">
+        <button class="seg @(S.Slab == SlabMode.Thin ? "on" : "")" @onclick="() => S.SetSlab(SlabMode.Thin)">薄い</button>
+        <button class="seg @(S.Slab == SlabMode.Mip ? "on" : "")" @onclick="() => S.SetSlab(SlabMode.Mip)">MIP</button>
+        <button class="seg @(S.Slab == SlabMode.Average ? "on" : "")" @onclick="() => S.SetSlab(SlabMode.Average)">平均</button>
+    </div>
+    @if (S.Slab != SlabMode.Thin)
+    {
+        <div class="param-row slim"><span class="param-label">厚み</span><span class="value">@Fmt(S.SlabThickness, "0") mm</span></div>
+        <input type="range" class="range" min="2" max="60" step="1" value="@Fmt(S.SlabThickness, "0")" @oninput="OnThickness" aria-label="厚み" />
+    }
+    <p class="small muted">MIP は厚みの中の最大値（造影血管や結節が見やすい）、平均は雑音が減ります。</p>
+</section>
+
+@code {
+    private static bool TryRead(ChangeEventArgs e, out double v) =>
+        double.TryParse(e.Value?.ToString(), NumberStyles.Float, CultureInfo.InvariantCulture, out v);
+
+    private void OnLevel(ChangeEventArgs e)
+    {
+        if (TryRead(e, out double v)) S.SetWindow(S.Window with { Level = v });
+    }
+
+    private void OnWidth(ChangeEventArgs e)
+    {
+        if (TryRead(e, out double v)) S.SetWindow(S.Window with { Width = v });
+    }
+
+    private void OnThickness(ChangeEventArgs e)
+    {
+        if (TryRead(e, out double v)) S.SetSlabThickness(v);
+    }
+}
