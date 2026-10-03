@@ -40,6 +40,7 @@ public partial class App : Application
             return;
         }
 
+        window.StartMaximized();
         window.Show();
         // フォルダーやファイルを指定して起動（エクスプローラーの「送る」など）
         var paths = e.Args.Where(a => Directory.Exists(a) || File.Exists(a)).ToList();
