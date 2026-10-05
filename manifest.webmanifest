@@ -1,0 +1,16 @@
+{
+  "name": "VolumeScope — CT の 3 断面と 3D",
+  "short_name": "VolumeScope",
+  "id": "./",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#12171E",
+  "theme_color": "#12171E",
+  "lang": "ja",
+  "icons": [
+    { "src": "icons/icon-192.png", "type": "image/png", "sizes": "192x192" },
+    { "src": "icons/icon-512.png", "type": "image/png", "sizes": "512x512" },
+    { "src": "icons/icon-512.png", "type": "image/png", "sizes": "512x512", "purpose": "maskable" }
+  ]
+}

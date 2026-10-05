@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <title>VolumeScope — CT の 3 断面と 3D</title>
+    <meta name="description" content="CT の DICOM シリーズを読み込み、横断・冠状断・矢状断の 3 断面と 3D（ボリュームレンダリング・面・MIP）を表示するアプリ。データはブラウザーの中だけで処理します。" />
+    <meta name="theme-color" content="#12171E" />
+    <base href="/VolumeScope/" />
+    <link rel="icon" type="image/svg+xml" href="icons/icon.svg" />
+    <link rel="apple-touch-icon" href="icons/icon-192.png" />
+    <link rel="manifest" href="manifest.webmanifest" />
+    <link rel="stylesheet" href="css/app.css" />
+    <script type="importmap">{
+  "imports": {
+    "./_framework/blazor.webassembly.js": "./_framework/blazor.webassembly.w3qd1tpl0e.js",
+    "./_framework/dotnet.js": "./_framework/dotnet.dfm0dyvf2r.js",
+    "./_framework/dotnet.native.js": "./_framework/dotnet.native.307vjrj7m3.js",
+    "./_framework/dotnet.runtime.js": "./_framework/dotnet.runtime.v06hirbjsv.js"
+  },
+  "scopes": {},
+  "integrity": {
+    "./_framework/blazor.webassembly.js": "sha256-lDXsDYFgm62F+YUvxES7IOTCXYpiHpU3uR45YdC6mq4=",
+    "./_framework/blazor.webassembly.w3qd1tpl0e.js": "sha256-lDXsDYFgm62F+YUvxES7IOTCXYpiHpU3uR45YdC6mq4=",
+    "./_framework/dotnet.dfm0dyvf2r.js": "sha256-iRYOla+U7rdCs3VOw82zuX7T6KLGKKCckRwxVL56300=",
+    "./_framework/dotnet.js": "sha256-iRYOla+U7rdCs3VOw82zuX7T6KLGKKCckRwxVL56300=",
+    "./_framework/dotnet.native.307vjrj7m3.js": "sha256-M2SAm5FLvWZvtInqWqrqEz+3qRsxIQ/lVfXYmS/xnZ0=",
+    "./_framework/dotnet.native.js": "sha256-M2SAm5FLvWZvtInqWqrqEz+3qRsxIQ/lVfXYmS/xnZ0=",
+    "./_framework/dotnet.runtime.js": "sha256-QbnqrZGHtGq7wudS17/AYEPpH9JkphrsyVllD6JHmds=",
+    "./_framework/dotnet.runtime.v06hirbjsv.js": "sha256-QbnqrZGHtGq7wudS17/AYEPpH9JkphrsyVllD6JHmds="
+  }
+}</script>
+</head>
+<body>
+    <div id="app">
+        <div class="boot">
+            <img class="boot-logo" src="icons/icon.svg" alt="" />
+            <div class="boot-name">VolumeScope</div>
+            <div class="boot-bar"><span></span></div>
+            <div class="boot-text">読み込んでいます… <span class="boot-pct"></span></div>
+            <noscript><p>このアプリを使うには JavaScript を有効にしてください。</p></noscript>
+        </div>
+    </div>
+    <div id="blazor-error-ui" role="alert">
+        問題が起きました。<a href="" class="reload">読み込み直す</a>
+        <a class="dismiss" aria-label="閉じる">✕</a>
+    </div>
+    <script src="_framework/blazor.webassembly.w3qd1tpl0e.js" autostart="false"></script>
+    <script src="js/boot.js"></script>
+</body>
+</html>
